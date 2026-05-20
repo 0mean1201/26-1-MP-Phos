@@ -1,17 +1,18 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui; // 💡 위젯 캡처를 위해 필요
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'; // 💡 RenderRepaintBoundary를 위해 필요
+import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/constants.dart';
-
-import 'dart:convert'; // JSON 변환용
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/face_recognition_service.dart';
+import '../services/grouping_service.dart';
+import '../services/photo_storage_service.dart';
+import '../services/sync_service.dart';
 
 class ResultScreen extends StatefulWidget {
   final FrameType selectedFrame;
@@ -24,59 +25,74 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
-  // 💡 캡처할 영역을 특정하기 위한 GlobalKey 생성
   final GlobalKey _globalKey = GlobalKey();
+  bool _isSaving = false;
 
-  /// 💡 [저장 기능] 위젯을 이미지로 변환하여 저장하는 핵심 함수
   Future<void> _saveResultImage() async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
     try {
       bool hasAccess = await Gal.hasAccess();
       if (!hasAccess) await Gal.requestAccess();
 
-      // 1. 위젯 캡처 및 이미지 파일 생성
-      RenderRepaintBoundary boundary = _globalKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      // 1. 위젯 캡처 → 임시 파일 생성
+      RenderRepaintBoundary boundary =
+          _globalKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       Uint8List pngBytes = byteData!.buffer.asUint8List();
 
-      final tempDir = await getTemporaryDirectory();
-      // 💡 파일명에 프레임 이름을 살짝 적어두는 것도 좋은 팁입니다.
-      String fileName = 'phos_${widget.selectedFrame.name}_${DateTime.now().millisecondsSinceEpoch}.png';
-      final file = await File('${tempDir.path}/$fileName').create();
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName =
+          'phos_${widget.selectedFrame.name}_${DateTime.now().millisecondsSinceEpoch}.png';
+      final file = await File('${appDir.path}/$fileName').create();
       await file.writeAsBytes(pngBytes);
 
       // 2. 갤러리에 저장
       await Gal.putImage(file.path);
 
-      // ----------------------------------------------------
-      // 💡 3. [핵심] 앱 내부 장부에 사진 정보(메타데이터) 기록하기
-      // ----------------------------------------------------
-      final prefs = await SharedPreferences.getInstance();
-      
-      // 기존에 저장된 사진 목록(문자열 리스트)을 불러옴
-      List<String> savedPhotos = prefs.getStringList('phos_gallery_data') ?? [];
-      
-      // 방금 저장한 사진의 정보를 Map(사전) 형태로 생성
-      Map<String, dynamic> newPhotoData = {
-        'path': file.path,                     // 사진이 임시 저장된 파일 경로 (갤러리용으로 띄울 때 사용)
-        'frameType': widget.selectedFrame.name, // "classic", "square" 등 Enum의 이름
-        'title': 'Untitled',                   // 초기 이름 (나중에 수정 가능하도록)
-        'tag': 'my_moment',                    // 초기 태그
-        'date': DateTime.now().toIso8601String()
-      };
+      // 3. 각 원본 사진에서 얼굴 임베딩 추출
+      final allEmbeddings = <List<double>>[];
+      for (final photo in widget.photos) {
+        final embeddings = await FaceRecognitionService().getEmbeddings(photo);
+        allEmbeddings.addAll(embeddings);
+      }
 
-      // Map을 JSON 문자열로 변환하여 리스트에 추가하고 다시 장부에 저장
-      savedPhotos.add(jsonEncode(newPhotoData));
-      await prefs.setStringList('phos_gallery_data', savedPhotos);
-      // ----------------------------------------------------
+      // 4. 클라이언트 사이드 그루핑
+      final groupingResult = await GroupingService().assignGroups(allEmbeddings);
+
+      // 5. 로컬 저장 (pendingUpload = true, 임베딩은 업로드 전까지만 보관)
+      final localPhoto = LocalPhoto(
+        path: file.path,
+        frameType: widget.selectedFrame.name,
+        title: 'Untitled',
+        tag: 'my_moment',
+        date: DateTime.now().toIso8601String(),
+        groupIds: groupingResult.groupIds,
+        pendingUpload: allEmbeddings.isNotEmpty,
+        pendingVectors: allEmbeddings.isNotEmpty ? groupingResult.vectors : null,
+      );
+      await PhotoStorageService().addPhoto(localPhoto);
+
+      // 6. 백그라운드에서 서버 업로드 시도 (실패해도 무시, 나중에 재시도)
+      if (allEmbeddings.isNotEmpty) {
+        SyncService().enqueuePendingPhotos();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('갤러리와 장부에 성공적으로 저장되었습니다! 🎉')),
+          const SnackBar(content: Text('갤러리에 저장되었습니다!')),
         );
       }
     } catch (e) {
-      debugPrint("저장 오류: $e");
+      debugPrint('저장 오류: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('저장 중 오류가 발생했습니다.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -95,7 +111,6 @@ class _ResultScreenState extends State<ResultScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 💡 [수정 포인트]: 캡처하고 싶은 위젯을 RepaintBoundary로 감싸고 Key를 부여함
               RepaintBoundary(
                 key: _globalKey,
                 child: _buildRenderedStrip(),
@@ -105,9 +120,15 @@ class _ResultScreenState extends State<ResultScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _saveResultImage, // 💡 저장 함수 연결
-                    icon: const Icon(Icons.download),
-                    label: const Text('Save to Gallery'),
+                    onPressed: _isSaving ? null : _saveResultImage,
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.download),
+                    label: Text(_isSaving ? '저장 중...' : 'Save to Gallery'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
@@ -130,7 +151,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  /// (기존 _buildRenderedStrip 코드는 동일)
   Widget _buildRenderedStrip() {
     return Container(
       width: 220,
@@ -152,21 +172,27 @@ class _ResultScreenState extends State<ResultScreen> {
                 mainAxisSpacing: 10,
               ),
               itemCount: widget.photos.length,
-              itemBuilder: (context, index) => Image.file(File(widget.photos[index].path), fit: BoxFit.cover),
+              itemBuilder: (context, index) =>
+                  Image.file(File(widget.photos[index].path), fit: BoxFit.cover),
             )
           else
             Column(
-              children: widget.photos.map((photo) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: AspectRatio(
-                  aspectRatio: 3 / 2,
-                  child: Image.file(File(photo.path), fit: BoxFit.cover),
-                ),
-              )).toList(),
+              children: widget.photos
+                  .map((photo) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: AspectRatio(
+                          aspectRatio: 3 / 2,
+                          child: Image.file(File(photo.path), fit: BoxFit.cover),
+                        ),
+                      ))
+                  .toList(),
             ),
           const SizedBox(height: 10),
-          const Text('pho\'s', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary)),
-          Text(DateTime.now().toString().substring(0, 10), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          const Text('pho\'s',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary)),
+          Text(DateTime.now().toString().substring(0, 10),
+              style: const TextStyle(fontSize: 10, color: Colors.grey)),
         ],
       ),
     );

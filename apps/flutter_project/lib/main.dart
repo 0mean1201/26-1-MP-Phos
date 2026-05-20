@@ -1,19 +1,69 @@
 import 'package:flutter/material.dart';
-import 'screens/main_layout.dart'; // ⬅️ 이 줄을 추가해주세요.
-import 'services/face_recognition_service.dart'; // 서비스 파일 import
+import 'package:shared_preferences/shared_preferences.dart';
+import 'screens/main_layout.dart';
+import 'services/face_recognition_service.dart';
+import 'services/api_service.dart';
+import 'services/sync_service.dart';
+
 Future<void> main() async {
-  // Flutter 프레임워크가 앱을 실행할 준비가 되도록 보장합니다.
-  // main 함수가 async인 경우 반드시 필요합니다.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // runApp을 호출하기 전에 서비스 초기화를 완료합니다.
   await FaceRecognitionService().initialize();
+  await _ensureAppInstance();
 
   runApp(const PhotoBoothApp());
 }
 
-class PhotoBoothApp extends StatelessWidget {
+/// 최초 실행 시 서버에서 AppInstance ID를 발급받아 로컬에 저장.
+/// 서버가 응답하지 않으면 -1(미등록 sentinel)을 저장하고,
+/// 이후 SyncService가 앱 재개 시 재시도한다.
+Future<void> _ensureAppInstance() async {
+  final prefs = await SharedPreferences.getInstance();
+  final stored = prefs.getInt('phos_app_instance_id');
+
+  if (stored != null && stored != -1) {
+    ApiService().setAppInstanceId(stored);
+    return;
+  }
+
+  try {
+    final id = await ApiService().registerAppInstance();
+    await prefs.setInt('phos_app_instance_id', id);
+    ApiService().setAppInstanceId(id);
+  } catch (_) {
+    await prefs.setInt('phos_app_instance_id', -1);
+    ApiService().setAppInstanceId(-1);
+  }
+}
+
+class PhotoBoothApp extends StatefulWidget {
   const PhotoBoothApp({super.key});
+
+  @override
+  State<PhotoBoothApp> createState() => _PhotoBoothAppState();
+}
+
+class _PhotoBoothAppState extends State<PhotoBoothApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 앱 시작 시 한 번 동기화 시도
+    SyncService().enqueuePendingPhotos();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      SyncService().enqueuePendingPhotos();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +74,7 @@ class PhotoBoothApp extends StatelessWidget {
         primaryColor: const Color(0xFF9D72FF),
         fontFamily: 'Roboto',
       ),
-      home: const MainLayout(), // 이 위젯을 사용하기 위해 import가 필요합니다.
+      home: const MainLayout(),
       debugShowCheckedModeBanner: false,
     );
   }

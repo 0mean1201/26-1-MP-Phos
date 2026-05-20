@@ -39,6 +39,7 @@ dependencies:
   permission_handler: ^12.0.1  # 저장 권한 요청용
   gal: ^2.3.0 # 갤러리 저장 패키지
   shared_preferences: ^2.5.5
+  http: ^1.2.1
 
   # ML Packages
   google_mlkit_face_detection: ^0.13.2 # 1. 이미지에서 얼굴 '위치'를 찾는 역할

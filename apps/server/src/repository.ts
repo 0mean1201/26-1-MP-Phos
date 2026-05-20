@@ -13,7 +13,11 @@ const adapter = new PrismaMariaDb({
 const prisma = new PrismaClient({ adapter });
 
 export { prisma };
-// 1. 사진과 얼굴 데이터를 한 번에 저장 (트랜잭션)
+
+export const createAppInstance = async () => {
+  return await prisma.appInstance.create({ data: {} });
+};
+
 export const createPhotoAndFaces = async (
   appInstanceId: number,
   imagePath: string,
@@ -35,8 +39,7 @@ export const createPhotoAndFaces = async (
     },
   });
 };
- 
-// 2. 특정 사용자의 그룹별 대표 얼굴 조회
+
 export const findGroupsWithRepresentative = async (appInstanceId: number) => {
   return await prisma.group.findMany({
     where: { appInstanceId },
@@ -49,11 +52,29 @@ export const findGroupsWithRepresentative = async (appInstanceId: number) => {
   });
 };
 
-// repository.ts에 추가
+export const findGroupsWithFaceCounts = async (appInstanceId: number) => {
+  return await prisma.group.findMany({
+    where: { appInstanceId },
+    include: {
+      faces: {
+        take: 1,
+        orderBy: { id: 'asc' },
+        include: { photo: true },
+      },
+      _count: { select: { faces: true } },
+    },
+    orderBy: { faces: { _count: 'desc' } },
+  });
+};
+
 export const countGroups = async (appInstanceId: number) => {
   return await prisma.group.count({ where: { appInstanceId } });
 };
 
 export const createGroup = async (appInstanceId: number, name: string) => {
   return await prisma.group.create({ data: { appInstanceId, name } });
+};
+
+export const updateGroupName = async (groupId: number, name: string) => {
+  return await prisma.group.update({ where: { id: groupId }, data: { name } });
 };

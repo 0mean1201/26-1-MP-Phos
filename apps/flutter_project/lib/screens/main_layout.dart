@@ -3,6 +3,7 @@ import 'dart:ui';
 // 탭에 들어갈 화면들 import
 import 'home_screen.dart';
 import 'gallery_screen.dart';
+import 'studio_screen.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -17,7 +18,7 @@ class _MainLayoutState extends State<MainLayout> {
   final List<Widget> _pages = [
     const HomeScreen(),
     const GalleryScreen(),
-    const Center(child: Text('Studio Screen (준비 중)')),
+    const StudioScreen(),
   ];
 
   @override

@@ -16,33 +16,28 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen> {
   bool _isShooting = false; // 촬영 진행 중 로딩 상태 표시용
 
   // 💡 [수정 포인트]: 실제 카메라를 연속으로 띄워 사진을 수집하는 로직
-  Future<void> _takePictures() async {
+  Future<void> _takePictures({ImageSource source = ImageSource.camera}) async {
     setState(() => _isShooting = true);
     List<XFile> takenPhotos = [];
-
     int targetCount = _selectedFrame.photoCount;
 
     try {
       for (int i = 0; i < targetCount; i++) {
-        // 실제 카메라 실행 (기기 테스트 시 작동)
-        final XFile? photo = await _picker.pickImage(source: ImageSource.camera);
-        
+        final XFile? photo = await _picker.pickImage(source: source);
         if (photo != null) {
           takenPhotos.add(photo);
         } else {
-          // 사용자가 중간에 카메라를 취소하면 촬영 중단
-          break; 
+          break;
         }
       }
 
-      // 목표한 사진 매수를 모두 채웠을 때만 결과 화면으로 이동
       if (takenPhotos.length == targetCount && mounted) {
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ResultScreen(
               selectedFrame: _selectedFrame,
-              photos: takenPhotos, // 💡 촬영한 사진 리스트 전달
+              photos: takenPhotos,
             ),
           ),
         );
@@ -141,21 +136,43 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen> {
                 ),
                 const SizedBox(height: 50),
                 
-                // 촬영 버튼
-                GestureDetector(
-                  onTap: _isShooting ? null : _takePictures, // 💡 촬영 로직 연결
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 8),
+                // 촬영 버튼 + 갤러리 선택 버튼
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // 갤러리에서 선택 버튼
+                    GestureDetector(
+                      onTap: _isShooting ? null : () => _takePictures(source: ImageSource.gallery),
+                      child: Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.primary, width: 2),
+                        ),
+                        child: const Icon(Icons.photo_library, color: AppColors.primary, size: 24),
+                      ),
                     ),
-                    child: _isShooting 
-                        ? const CircularProgressIndicator(color: Colors.white) 
-                        : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
-                  ),
+                    const SizedBox(width: 32),
+                    // 카메라 촬영 버튼
+                    GestureDetector(
+                      onTap: _isShooting ? null : () => _takePictures(),
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 8),
+                        ),
+                        child: _isShooting
+                            ? const CircularProgressIndicator(color: Colors.white)
+                            : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+                      ),
+                    ),
+                    const SizedBox(width: 88), // 좌우 균형용
+                  ],
                 ),
                 const SizedBox(height: 100),
               ],
