@@ -1,0 +1,57 @@
+datasource db {
+  provider = "mysql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+// 기기 고유 ID 테이블
+model AppInstance {
+  // 💡 String에서 Int (자동 증가)로 변경하여 기준을 맞춥니다.
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  photos Photo[]
+  groups Group[]
+}
+
+// 1. 사진 테이블
+model Photo {
+  id            Int      @id @default(autoincrement())
+  // 💡 AppInstance의 id 타입(Int)과 완벽히 일치시킵니다.
+  appInstanceId Int
+  imagePath     String // 로컬 디바이스 경로 또는 클라우드 URL
+  createdAt     DateTime @default(now())
+
+  appInstance AppInstance @relation(fields: [appInstanceId], references: [id], onDelete: Cascade)
+  faces       Face[]
+}
+
+// 2. 얼굴 테이블
+model Face {
+  id        Int      @id @default(autoincrement())
+  photoId   Int
+  groupId   Int? // 최초 저장 시에는 null 가능
+  vector    Json // 얼굴 특징 벡터 배열
+  createdAt DateTime @default(now())
+
+  photo Photo  @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  group Group? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+}
+
+// 3. 그룹 테이블
+model Group {
+  id            Int      @id @default(autoincrement())
+  // 💡 여기도 AppInstance의 id 타입(Int)과 일치시킵니다.
+  appInstanceId Int
+  name          String // 그룹 이름
+  createdAt     DateTime @default(now())
+
+  appInstance AppInstance @relation(fields: [appInstanceId], references: [id], onDelete: Cascade)
+  faces       Face[]
+
+  // 한 사용자 내에서만 그룹 이름이 중복되지 않도록 설정
+  @@unique([appInstanceId, name])
+}
