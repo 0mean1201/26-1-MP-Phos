@@ -14,13 +14,17 @@ class FaceRecognitionService {
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
       performanceMode: FaceDetectorMode.accurate,
-      enableLandmarks: true, // 눈 좌표로 얼굴 정렬
+      enableLandmarks: true,
     ),
   );
 
   static const String _modelPath = 'assets/ml/facenet_512.tflite';
   static const int _inputSize = 160;
   static const int _outputSize = 512;
+
+  // FaceNet 160×160 기준 눈 위치 (좌우 대칭, 상단 40% 지점)
+  static const double _refLeftEyeX = 55.0, _refLeftEyeY = 65.0;
+  static const double _refRightEyeX = 105.0, _refRightEyeY = 65.0;
 
   Future<void> initialize() async {
     try {
@@ -46,9 +50,9 @@ class FaceRecognitionService {
       final List<List<double>> allEmbeddings = [];
 
       for (final face in faces) {
-        final cropped = _cropAligned(originalImage, face);
-        final resized = img.copyResize(cropped, width: _inputSize, height: _inputSize);
-        final preprocessed = _preprocessImage(resized);
+        // affine warp로 눈 위치를 기준점에 고정, 출력이 이미 160×160
+        final warped = _warpFace(originalImage, face);
+        final preprocessed = _preprocessImage(warped);
 
         final input = preprocessed.reshape([1, _inputSize, _inputSize, 3]);
         final output = List.filled(_outputSize, 0.0).reshape([1, _outputSize]);
@@ -63,49 +67,89 @@ class FaceRecognitionService {
     }
   }
 
-  /// 눈 랜드마크로 얼굴을 수평 정렬한 후 크롭.
-  /// 랜드마크가 없으면 패딩 크롭으로 폴백.
-  img.Image _cropAligned(img.Image image, Face face) {
+  /// Similarity transform (복소수 나눗셈):
+  /// 원본 이미지의 눈 좌표를 출력 160×160의 기준 좌표에 정확히 맞춰 warp.
+  /// 중간 회전 이미지를 만들지 않으므로 보간 오류가 적고 정확도가 높다.
+  img.Image _warpFace(img.Image src, Face face) {
     final leftEye = face.landmarks[FaceLandmarkType.leftEye];
     final rightEye = face.landmarks[FaceLandmarkType.rightEye];
 
-    if (leftEye != null && rightEye != null) {
-      final lx = leftEye.position.x.toDouble();
-      final ly = leftEye.position.y.toDouble();
-      final rx = rightEye.position.x.toDouble();
-      final ry = rightEye.position.y.toDouble();
-
-      // 눈 기울기 각도 계산
-      final angle = atan2(ry - ly, rx - lx) * 180 / pi;
-
-      // 이미지 중심 기준으로 회전
-      final imgCx = image.width / 2.0;
-      final imgCy = image.height / 2.0;
-      final rotated = img.copyRotate(image, angle: -angle);
-
-      // 회전 후 눈 중심 좌표 재계산
-      final rad = -angle * pi / 180;
-      final eyeCx = (lx + rx) / 2;
-      final eyeCy = (ly + ry) / 2;
-      final newEyeCx = cos(rad) * (eyeCx - imgCx) - sin(rad) * (eyeCy - imgCy) + imgCx;
-      final newEyeCy = sin(rad) * (eyeCx - imgCx) + cos(rad) * (eyeCy - imgCy) + imgCy;
-
-      // 눈 간격으로 얼굴 크기 추정 (눈 간격의 3.5배)
-      final eyeDist = sqrt(pow(rx - lx, 2) + pow(ry - ly, 2));
-      final halfSize = (eyeDist * 1.8).toInt();
-
-      // 얼굴 중심 = 눈 중심보다 약간 아래
-      final faceCy = newEyeCy + eyeDist * 0.3;
-
-      final x = (newEyeCx - halfSize).toInt().clamp(0, rotated.width - 1);
-      final y = (faceCy - halfSize).toInt().clamp(0, rotated.height - 1);
-      final size = (halfSize * 2).clamp(1, min(rotated.width - x, rotated.height - y).toInt());
-
-      return img.copyCrop(rotated, x: x, y: y, width: size, height: size);
+    if (leftEye == null || rightEye == null) {
+      return img.copyResize(_paddedCrop(src, face),
+          width: _inputSize, height: _inputSize);
     }
 
-    // 랜드마크 없을 때 폴백: 30% 패딩 크롭
-    return _paddedCrop(image, face);
+    final lx = leftEye.position.x.toDouble();
+    final ly = leftEye.position.y.toDouble();
+    final rx = rightEye.position.x.toDouble();
+    final ry = rightEye.position.y.toDouble();
+
+    // a = (dst_right - dst_left) / (src_right - src_left)  (복소수)
+    final srcDx = rx - lx;
+    final srcDy = ry - ly;
+    final dstDx = _refRightEyeX - _refLeftEyeX; // 50.0
+    final dstDy = _refRightEyeY - _refLeftEyeY; // 0.0
+
+    final denom = srcDx * srcDx + srcDy * srcDy;
+    if (denom < 1.0) {
+      return img.copyResize(_paddedCrop(src, face),
+          width: _inputSize, height: _inputSize);
+    }
+
+    final aR = (dstDx * srcDx + dstDy * srcDy) / denom;
+    final aI = (dstDy * srcDx - dstDx * srcDy) / denom;
+    final bR = _refLeftEyeX - (aR * lx - aI * ly);
+    final bI = _refLeftEyeY - (aI * lx + aR * ly);
+
+    // 역변환 계수 (output pixel → input pixel)
+    final det = aR * aR + aI * aI;
+    final invAR = aR / det;
+    final invAI = aI / det;
+
+    final output = img.Image(width: _inputSize, height: _inputSize);
+
+    for (int oy = 0; oy < _inputSize; oy++) {
+      for (int ox = 0; ox < _inputSize; ox++) {
+        final oxB = ox - bR;
+        final oyB = oy - bI;
+
+        final ix = invAR * oxB + invAI * oyB;
+        final iy = invAR * oyB - invAI * oxB;
+
+        final x0 = ix.floor();
+        final y0 = iy.floor();
+
+        // 범위 밖이면 회색으로 채움 (정규화 후 0.0이 됨)
+        if (x0 < 0 || y0 < 0 || x0 + 1 >= src.width || y0 + 1 >= src.height) {
+          output.setPixelRgb(ox, oy, 128, 128, 128);
+          continue;
+        }
+
+        // 쌍선형 보간
+        final fx = ix - x0;
+        final fy = iy - y0;
+        final p00 = src.getPixel(x0, y0);
+        final p10 = src.getPixel(x0 + 1, y0);
+        final p01 = src.getPixel(x0, y0 + 1);
+        final p11 = src.getPixel(x0 + 1, y0 + 1);
+
+        final r = (1 - fx) * (1 - fy) * p00.r + fx * (1 - fy) * p10.r +
+            (1 - fx) * fy * p01.r + fx * fy * p11.r;
+        final g = (1 - fx) * (1 - fy) * p00.g + fx * (1 - fy) * p10.g +
+            (1 - fx) * fy * p01.g + fx * fy * p11.g;
+        final b = (1 - fx) * (1 - fy) * p00.b + fx * (1 - fy) * p10.b +
+            (1 - fx) * fy * p01.b + fx * fy * p11.b;
+
+        output.setPixelRgb(
+          ox, oy,
+          r.round().clamp(0, 255),
+          g.round().clamp(0, 255),
+          b.round().clamp(0, 255),
+        );
+      }
+    }
+
+    return output;
   }
 
   img.Image _paddedCrop(img.Image image, Face face) {
@@ -130,16 +174,10 @@ class FaceRecognitionService {
     int idx = 0;
     for (int y = 0; y < _inputSize; y++) {
       for (int x = 0; x < _inputSize; x++) {
-        if (x < image.width && y < image.height) {
-          final pixel = image.getPixel(x, y);
-          buffer[idx++] = (pixel.r - 127.5) / 127.5;
-          buffer[idx++] = (pixel.g - 127.5) / 127.5;
-          buffer[idx++] = (pixel.b - 127.5) / 127.5;
-        } else {
-          buffer[idx++] = 0.0;
-          buffer[idx++] = 0.0;
-          buffer[idx++] = 0.0;
-        }
+        final pixel = image.getPixel(x, y);
+        buffer[idx++] = (pixel.r - 127.5) / 127.5;
+        buffer[idx++] = (pixel.g - 127.5) / 127.5;
+        buffer[idx++] = (pixel.b - 127.5) / 127.5;
       }
     }
     return buffer;

@@ -104,7 +104,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   List<SavedPhoto> _findSimilarPhotos(List<double> targetEmbedding) {
-    const double threshold = 0.3;
+    const double threshold = 0.15;
     return _myGallery.where((photo) {
       return photo.embeddings.any((embedding) {
         return GroupingService.cosineSimilarity(targetEmbedding, embedding) > threshold;
