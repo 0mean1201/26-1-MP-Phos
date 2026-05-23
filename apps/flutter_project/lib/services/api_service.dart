@@ -83,7 +83,7 @@ class ApiService {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(body),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 30));
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {
@@ -95,7 +95,7 @@ class ApiService {
   Future<Map<String, dynamic>> _get(String path) async {
     final response = await http
         .get(Uri.parse('$baseUrl$path'))
-        .timeout(const Duration(seconds: 10));
+        .timeout(const Duration(seconds: 30));
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode >= 400) {

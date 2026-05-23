@@ -79,7 +79,6 @@ export const getIntimacyHandler = async (req: Request, res: Response) => {
     const data = await service.getIntimacyData(appIdNumber);
     res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error('getIntimacy error:', error);
-    res.status(500).json({ success: false, message: "친밀도 조회 실패", error: String(error) });
+    res.status(500).json({ success: false, message: "친밀도 조회 실패" });
   }
 };

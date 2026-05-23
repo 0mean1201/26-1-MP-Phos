@@ -3,14 +3,12 @@ import { PrismaMariaDb } from '@prisma/adapter-mariadb';
 import 'dotenv/config';
 
 const adapter = new PrismaMariaDb({
-  host: process.env.DATABASE_HOST,
-  port: process.env.DATABASE_PORT ? parseInt(process.env.DATABASE_PORT) : 3306,
-  user: process.env.DATABASE_USER,
-  password: process.env.DATABASE_PASSWORD,
-  database: process.env.DATABASE_NAME,
+  host: process.env.DATABASE_HOST?.trim(),
+  port: process.env.DATABASE_PORT ? parseInt(process.env.DATABASE_PORT.trim()) : 3306,
+  user: process.env.DATABASE_USER?.trim(),
+  password: process.env.DATABASE_PASSWORD?.trim(),
+  database: process.env.DATABASE_NAME?.trim(),
   connectionLimit: 5,
-  connectTimeout: 20000,
-  acquireTimeout: 20000,
 });
 
 const prisma = new PrismaClient({ adapter });

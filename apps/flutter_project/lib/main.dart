@@ -30,8 +30,7 @@ Future<void> _ensureAppInstance() async {
     final id = await ApiService().registerAppInstance();
     await prefs.setInt('phos_app_instance_id', id);
     ApiService().setAppInstanceId(id);
-  } catch (e, st) {
-    debugPrint('registerAppInstance failed: $e\n$st');
+  } catch (_) {
     await prefs.setInt('phos_app_instance_id', -1);
     ApiService().setAppInstanceId(-1);
   }
