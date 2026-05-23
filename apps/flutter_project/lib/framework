@@ -18,8 +18,8 @@ enum FrameType {
 class FrameDesign {
   final String id;
   final String name;
-  final Color fallbackColor;     // 이미지 로드 실패 시 보정용 배경색
-  final String? assetImagePath;  // [핵심] 사용자가 직접 디자인한 구멍 뚫린 PNG 프레임 (Assets 경로)
+  final Color fallbackColor;     // 배경색
+  final String? assetImagePath;  // 직접 디자인한 구멍 뚫린 PNG 프레임 (Assets 경로)
 
   FrameDesign({
     required this.id,
@@ -29,14 +29,12 @@ class FrameDesign {
   });
 }
 
-/// 3. 사진 슬롯을 아래에 깔고, 그 위에 직접 만든 프레임 이미지를 오버레이하는 핵심 위젯
+/// 3. 선택한 프레임 스킨 모양 그대로 메인 화면에서 렌더링하는 위젯
 class CustomFourCutFrame extends StatelessWidget {
   final List<File?> images;              // 입력받은 사진 리스트
   final FrameType frameType;             // 선택된 레이아웃 형태
   final FrameDesign design;              // 선택된 커스텀 프레임 디자인
-  final Function(int index)? onPhotoTap; // 개별 칸 선택 시 액션 (편집용)
-  final int? currentCaptureIndex;         // 현재 촬영 중인 인덱스 (카메라 프리뷰 표시용)
-  final Widget? cameraPreviewWidget;      // 실시간 카메라 프리뷰 위젯 인입용
+  final Function(int index)? onPhotoTap; // 개별 칸 선택 시 액션
 
   const CustomFourCutFrame({
     Key? key,
@@ -44,11 +42,8 @@ class CustomFourCutFrame extends StatelessWidget {
     required this.frameType,
     required this.design,
     this.onPhotoTap,
-    this.currentCaptureIndex,
-    this.cameraPreviewWidget,
   }) : super(key: key);
 
-  // 레이아웃 별 프레임 실제 해상도/크기 비율 고정 (인생네컷 표준 비율 반영)
   Size _getFrameSize() {
     switch (frameType) {
       case FrameType.grid2x2:
@@ -60,11 +55,10 @@ class CustomFourCutFrame extends StatelessWidget {
     }
   }
 
-  // 각 프레임 레이아웃에 맞는 사진 비율 및 여백 설정 내부 패딩
   EdgeInsets _getInternalPadding() {
     switch (frameType) {
       case FrameType.grid2x2:
-        return const EdgeInsets.fromLTRB(14, 16, 14, 55); // 아래 브랜드 로고 영역 확보
+        return const EdgeInsets.fromLTRB(14, 16, 14, 55);
       case FrameType.strip1x4:
         return const EdgeInsets.fromLTRB(10, 12, 10, 50);
       case FrameType.strip1x3:
@@ -79,20 +73,19 @@ class CustomFourCutFrame extends StatelessWidget {
     return Container(
       width: frameSize.width,
       height: frameSize.height,
-      color: design.fallbackColor, // 기본 베이스 배경색
+      color: design.fallbackColor,
       child: Stack(
         children: [
-          // [레이어 1] 실제 사진 및 카메라 프리뷰가 배치되는 하부 레이아웃
+          // [레이어 1] 사진들이 배치되는 영역
           Padding(
             padding: _getInternalPadding(),
             child: _buildPhotosLayout(),
           ),
 
-          // [레이어 2] 직접 제작한 구멍 뚫린 PNG 프레임 이미지를 위에 덮어버림
+          // [레이어 2] 직접 제작한 PNG 프레임 이미지 오버레이
           if (design.assetImagePath != null)
             Positioned.fill(
               child: IgnorePointer(
-                // 프레임 이미지가 터치 이벤트를 막지 않도록 설정하여 사진 칸 클릭 유효화
                 child: Image.asset(
                   design.assetImagePath!,
                   fit: BoxFit.fill,
@@ -104,7 +97,6 @@ class CustomFourCutFrame extends StatelessWidget {
     );
   }
 
-  /// 프레임 레이아웃 배치 로직
   Widget _buildPhotosLayout() {
     switch (frameType) {
       case FrameType.grid2x2:
@@ -158,22 +150,13 @@ class CustomFourCutFrame extends StatelessWidget {
     }
   }
 
-  /// 개별 사진 영역 프레임 셸 빌더 (촬영 중에는 해당 칸에 실시간 프리뷰 삽입)
   Widget _buildPhotoCell(int index) {
     final File? imgFile = (index < images.length) ? images[index] : null;
-
-    // 만약 현재 촬영해야 하는 인덱스이고 카메라 프리뷰 위젯이 존재한다면 뷰파인더 꽂아주기
-    if (currentCaptureIndex == index && cameraPreviewWidget != null) {
-      return Container(
-        color: Colors.black,
-        child: cameraPreviewWidget,
-      );
-    }
 
     return GestureDetector(
       onTap: onPhotoTap != null ? () => onPhotoTap!(index) : null,
       child: Container(
-        color: const Color(0xFFEEEEEE), // 빈 슬롯 상태의 기본 회색 배경
+        color: const Color(0xFFEEEEEE),
         child: imgFile != null
             ? Image.file(
                 imgFile,
@@ -198,8 +181,6 @@ class FrameCaptureService {
   static Future<File?> saveFrameAsImage(GlobalKey repaintKey) async {
     try {
       final boundary = repaintKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
-
-      // 고화질 출력을 보장하기 위해 픽셀 디바이스 배수를 3.0배 고해상도로 캡처진행
       final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
       final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
 
@@ -213,23 +194,19 @@ class FrameCaptureService {
       await file.writeAsBytes(pngBytes);
       return file;
     } catch (e) {
-      debugPrint('최종 이미지 합성 디바이스 인코딩 오류: $e');
+      debugPrint('최종 이미지 합성 오류: $e');
       return null;
     }
   }
 }
 
-/// 5. 인앱 전용 포토부스 촬영 화면 (실시간 커스텀 선택 프레임 연동)
+/// 5. 심플 카메라 촬영 화면 (타이머 제거, 전체 화면 카메라 적용)
 class CameraBoothScreen extends StatefulWidget {
-  final int requiredPhotos;  // 촬영해야 하는 총 장수 (3 또는 4)
-  final FrameType frameType; // 부모 메인 콘솔로부터 전달받은 레이아웃 종류
-  final FrameDesign design;  // 부모 메인 콘솔로부터 전달받은 직접 만든 프레임 디자인
+  final int requiredPhotos; // 촬영해야 하는 총 장수 (3 또는 4)
 
   const CameraBoothScreen({
     Key? key,
     required this.requiredPhotos,
-    required this.frameType,
-    required this.design,
   }) : super(key: key);
 
   @override
@@ -239,22 +216,15 @@ class CameraBoothScreen extends StatefulWidget {
 class _CameraBoothScreenState extends State<CameraBoothScreen> {
   List<CameraDescription> _cameras = [];
   CameraController? _cameraController;
-  int _selectedCameraIndex = 1; // 기본 디폴트 전면 셀카 렌즈 고정
+  int _selectedCameraIndex = 1; // 전면 셀카 기본
   bool _isCameraInitialized = false;
 
-  // 촬영 진행 상태 동기화 데이터 세트 (고정 크기 Nullable 리스트 구조화)
-  late List<File?> _capturedFiles;
-  int _currentCaptureIndex = 0;
-
-  // 타이머 관련 변수
-  Timer? _timer;
-  int _timerSeconds = 3;
-  bool _isCountingDown = false;
+  // 촬영 완료된 사진을 순서대로 저장할 리스트
+  final List<File> _capturedFiles = [];
 
   @override
   void initState() {
     super.initState();
-    _capturedFiles = List<File?>.filled(widget.requiredPhotos, null);
     _initCameras();
   }
 
@@ -269,7 +239,7 @@ class _CameraBoothScreenState extends State<CameraBoothScreen> {
         await _startCameraController(_cameras[_selectedCameraIndex]);
       }
     } catch (e) {
-      debugPrint('카메라 하드웨어 묘사 실패: $e');
+      debugPrint('카메라 하드웨어 검색 실패: $e');
     }
   }
 
@@ -292,13 +262,12 @@ class _CameraBoothScreenState extends State<CameraBoothScreen> {
         });
       }
     } catch (e) {
-      debugPrint('카메라 뷰파인더 초기화 실패: $e');
+      debugPrint('카메라 초기화 실패: $e');
     }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
     _cameraController?.dispose();
     super.dispose();
   }
@@ -312,29 +281,7 @@ class _CameraBoothScreenState extends State<CameraBoothScreen> {
     await _startCameraController(_cameras[_selectedCameraIndex]);
   }
 
-  void _triggerCountdown() {
-    if (_isCountingDown || _currentCaptureIndex >= widget.requiredPhotos) return;
-
-    setState(() {
-      _isCountingDown = true;
-      _timerSeconds = 3;
-    });
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_timerSeconds > 1) {
-        setState(() {
-          _timerSeconds--;
-        });
-      } else {
-        timer.cancel();
-        setState(() {
-          _isCountingDown = false;
-        });
-        await _takePhoto();
-      }
-    });
-  }
-
+  /// 버튼 누르면 타이머 없이 즉시 한 컷 촬영
   Future<void> _takePhoto() async {
     if (_cameraController == null || !_cameraController!.value.isInitialized) return;
 
@@ -343,112 +290,63 @@ class _CameraBoothScreenState extends State<CameraBoothScreen> {
       final File savedFile = File(rawPhoto.path);
 
       setState(() {
-        _capturedFiles[_currentCaptureIndex] = savedFile;
-        _currentCaptureIndex++;
+        _capturedFiles.add(savedFile);
       });
 
-      // 지정한 포토수를 전부 촬영 완료했다면 결과물 파일을 묶어서 메인 화면으로 리턴
-      if (_currentCaptureIndex >= widget.requiredPhotos) {
-        final List<File> nonNullFiles = _capturedFiles.whereType<File>().toList();
-        Navigator.pop(context, nonNullFiles);
+      // 목표 장수(3장 또는 4장)를 모두 찍었다면 즉시 메인 화면으로 복귀하며 데이터 전달
+      if (_capturedFiles.length >= widget.requiredPhotos) {
+        Navigator.pop(context, _capturedFiles);
       }
     } catch (e) {
-      debugPrint('셔터 트리거 캡처 에러: $e');
+      debugPrint('사진 촬영 오류: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // 하드웨어 비율에 맞춰 꽉 차게 크롭 렌더링을 처리하는 뷰파인더 모듈 추출
-    Widget? previewWidget;
-    if (_isCameraInitialized && _cameraController != null) {
-      previewWidget = ClipRect(
-        child: OverflowBox(
-          alignment: Alignment.center,
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _cameraController!.value.previewSize!.height,
-              height: _cameraController!.value.previewSize!.width,
-              child: CameraPreview(_cameraController!),
-            ),
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A), // 어두운 촬영룸 연출 배경
+      backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          '부스 촬영중 (${_currentCaptureIndex + 1}/${widget.requiredPhotos}컷)',
+          '부스 촬영중 (${_capturedFiles.length + 1}/${widget.requiredPhotos}컷)',
           style: const TextStyle(color: Colors.white, fontSize: 16),
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.flip_camera_ios_outlined),
-            onPressed: _isCountingDown ? null : _toggleCamera,
+            onPressed: _toggleCamera,
           ),
         ],
       ),
       body: _isCameraInitialized
           ? Column(
               children: [
-                // 1. 실시간 선택한 구멍 뚫린 내 프레임 안에서 사진 찍는 메인 영역
+                // 1. 순수 전체화면 기기 카메라 프리뷰 구역 (실시간 프레임 오버레이 기능 제거)
                 Expanded(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // 메인 콘솔에서 미리 선택하고 들어온 프레임을 그대로 띄우고 빈 슬롯에만 카메라 표출
-                          CustomFourCutFrame(
-                            images: _capturedFiles,
-                            frameType: widget.frameType,
-                            design: widget.design,
-                            currentCaptureIndex: _currentCaptureIndex < widget.requiredPhotos ? _currentCaptureIndex : null,
-                            cameraPreviewWidget: previewWidget,
-                          ),
-
-                          // 실시간 3, 2, 1 카운트다운 타이머 텍스트 그래픽 오버레이
-                          if (_isCountingDown)
-                            IgnorePointer(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: Text(
-                                  '$_timerSeconds',
-                                  key: ValueKey<int>(_timerSeconds),
-                                  style: const TextStyle(
-                                    color: Colors.yellowAccent,
-                                    fontSize: 110,
-                                    fontWeight: FontWeight.w900,
-                                    fontStyle: FontStyle.italic,
-                                    shadows: [
-                                      Shadow(
-                                        blurRadius: 15.0,
-                                        color: Colors.black,
-                                        offset: Offset(3.0, 3.0),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.center,
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _cameraController!.value.previewSize!.height,
+                          height: _cameraController!.value.previewSize!.width,
+                          child: CameraPreview(_cameraController!),
+                        ),
                       ),
                     ),
                   ),
                 ),
 
-                // 2. 하단 카메라 물리 셔터 콘솔 제어 바
+                // 2. 하단 상단바 및 셔터 제어 공간
                 Container(
                   color: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Center(
                     child: ElevatedButton(
-                      onPressed: _isCountingDown || _currentCaptureIndex >= widget.requiredPhotos ? null : _triggerCountdown,
+                      onPressed: _takePhoto, // 누르면 즉시 촬영
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: Colors.black,
@@ -470,7 +368,7 @@ class _CameraBoothScreenState extends State<CameraBoothScreen> {
   }
 }
 
-/// 6. 실제 사용 및 조합 완성 메인 제어판 (카메라 구동 전 미리 프레임 테마 에디팅)
+/// 6. 실제 사용 및 조합 완성 메인 제어판 (카메라 구동 전 프레임 스킨 에디팅)
 class LifeFourCutsCreatorScreen extends StatefulWidget {
   const LifeFourCutsCreatorScreen({Key? key}) : super(key: key);
 
@@ -481,42 +379,36 @@ class LifeFourCutsCreatorScreen extends StatefulWidget {
 class _LifeFourCutsCreatorScreenState extends State<LifeFourCutsCreatorScreen> {
   final GlobalKey _repaintBoundaryKey = GlobalKey();
 
-  // 기본 세팅 데이터값 정의
   FrameType _selectedType = FrameType.grid2x2;
   late FrameDesign _selectedDesign;
 
-  // 빈 슬롯으로 노출될 뼈대 리스트 정의
   List<File?> _capturedPhotos = [null, null, null, null];
 
-  // [★ 핵심 에디터 설정] 디자이너가 작업한 투명 PNG 파일들을 등록하는 데이터베이스 존
+  // [프레임 에디터 설정] 디자이너가 작업한 PNG 파일들을 매핑하는 리스트
   final List<FrameDesign> _customFrameTemplates = [
-    // 1번 예시: 내가 포토샵으로 직접 그려 프로젝트 asset에 등록한 커스텀 테마
     FrameDesign(
-      id: "my_christmas_theme",
-      name: "🎄 크리스마스 에디션",
+      id: "gachon_theme",
+      name: "가천네컷",
       fallbackColor: Colors.white,
-      assetImagePath: "assets/images/1.png", // 여기에 본인의 투명 구멍 PNG 파일 매핑!
+      assetImagePath: "assets/images/3.png", // 본인의 투명 구멍 PNG 매핑
     ),
-    // 2번 예시: 또 다른 내가 만든 산리오/Y2K 디자인 프레임
     FrameDesign(
-      id: "my_y2k_pink_theme",
-      name: "💖 하이틴 Y2K 핑크",
+      id: "normal_theme",
+      name: "기본",
       fallbackColor: const Color(0xFFFFF0F5),
-      assetImagePath: "assets/images/2.png", 
+      assetImagePath: "assets/frames/1.png", 
     ),
-    // 3번 예시: 이미지 파일 없이 코드 베이스 색상으로만 때우는 프레임 틀 예시
     FrameDesign(
       id: "midnight_black",
-      name: "⬛ 미드나잇 블랙 (기본)",
+      name: "⬛ 미드나잇 블랙",
       fallbackColor: Colors.black,
-      assetImagePath: null, // 경로를 안 적으면 순수 솔리드 fallbackColor가 노출됩니다.
+      assetImagePath: null, 
     ),
   ];
 
   @override
   void initState() {
     super.initState();
-    // 앱이 처음 켜질 때 1번째로 등록한 내가 만든 프레임 테마를 기본값으로 지정
     _selectedDesign = _customFrameTemplates.first;
   }
 
@@ -530,23 +422,21 @@ class _LifeFourCutsCreatorScreenState extends State<LifeFourCutsCreatorScreen> {
     });
   }
 
-  /// 메인 화면 콘솔에서 모든 프레임 디자인 및 레이아웃을 고른 후 '카메라 부스'로 진입하는 시점
+  /// 메인 화면 콘솔에서 모든 세팅을 끝낸 후 카메라 화면을 띄우는 함수
   Future<void> _launchCameraBooth() async {
     final int requiredCount = _selectedType == FrameType.strip1x3 ? 3 : 4;
 
-    // [카메라 구동 전 프레임 확정 전달] 현재 선택된 프레임 비율과 이미지 소스를 카메라 화면으로 넘김
+    // 카메라 화면으로 진입 (필요한 사진 장수만 넘겨줍니다)
     final List<File>? result = await Navigator.push<List<File>>(
       context,
       MaterialPageRoute(
         builder: (context) => CameraBoothScreen(
           requiredPhotos: requiredCount,
-          frameType: _selectedType,
-          design: _selectedDesign,
         ),
       ),
     );
 
-    // 카메라 모듈에서 순차 셔터 촬영 완료 후 복귀 시 데이터 동기화
+    // 촬영이 완료되어 복귀하면 찍힌 사진들을 내 프레임에 안착시킵니다.
     if (result != null && result.isNotEmpty) {
       setState(() {
         _capturedPhotos = List<File?>.from(result);
@@ -566,7 +456,7 @@ class _LifeFourCutsCreatorScreenState extends State<LifeFourCutsCreatorScreen> {
       ),
       body: Column(
         children: [
-          // 1. 완성될 프레임의 조합 및 커스텀 이미지 결과 선행 프리뷰 구역
+          // 1. 완성본 미리보기 존 (선택한 프레임 스킨 반영 상태)
           Expanded(
             child: Center(
               child: SingleChildScrollView(
@@ -589,7 +479,7 @@ class _LifeFourCutsCreatorScreenState extends State<LifeFourCutsCreatorScreen> {
             ),
           ),
 
-          // 2. 하단 디자인 제어 및 카메라 룸 진입 조작 대시보드 콘솔
+          // 2. 하단 디자인 제어 대시보드 콘솔
           Container(
             padding: const EdgeInsets.all(20.0),
             decoration: const BoxDecoration(
