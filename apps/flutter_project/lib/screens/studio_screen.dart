@@ -42,7 +42,8 @@ class _StudioScreenState extends State<StudioScreen> {
         _intimacyList = data;
         _isLoading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('getIntimacy failed: $e');
       setState(() {
         _errorMessage = '친밀도 데이터를 불러올 수 없습니다.\n서버 연결을 확인해 주세요.';
         _isLoading = false;

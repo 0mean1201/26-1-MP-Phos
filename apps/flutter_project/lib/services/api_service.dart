@@ -62,9 +62,7 @@ class IntimacyDto {
 }
 
 class ApiService {
-  // Android 에뮬레이터: 10.0.2.2 = 호스트 머신의 localhost
-  // 실기기 테스트 시: 같은 WiFi의 PC LAN IP로 변경 (예: http://192.168.x.x:3000)
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'https://port-0-phos-mpiml6p754ac32d4.sel3.cloudtype.app';
 
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;

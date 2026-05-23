@@ -41,7 +41,9 @@ class SyncService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('phos_app_instance_id', id);
       ApiService().setAppInstanceId(id);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('_retryRegistration failed: $e');
+    }
   }
 
   Future<void> _uploadOne(LocalPhoto photo) async {
