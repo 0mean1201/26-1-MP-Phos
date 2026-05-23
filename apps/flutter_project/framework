@@ -1,0 +1,238 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
+// 1. 레이아웃 골격 정의
+enum LayoutType { grid2x2, strip1x4, strip1x3 }
+
+// 2. 요청하신 형태 그대로 적용한 내장 프레임 데이터 모델
+class CameraFrame {
+  final String id;
+  final String name;
+  final LayoutType layout;
+  final Color backgroundColor;
+  final String? assetPath; // 👈 프로젝트 폴더 내 이미지 경로 (예: 'assets/ml/3.png')
+
+  CameraFrame({
+    required this.id,
+    required this.name,
+    required this.layout,
+    this.backgroundColor = Colors.white, // 기본 배경은 화이트
+    this.assetPath,
+  });
+}
+
+class BuiltInFrameCameraScreen extends StatefulWidget {
+  const BuiltInFrameCameraScreen({super.key});
+
+  @override
+  State<BuiltInFrameCameraScreen> createState() => _BuiltInFrameCameraScreenState();
+}
+
+class _BuiltInFrameCameraScreenState extends State<BuiltInFrameCameraScreen> {
+  final ImagePicker _picker = ImagePicker();
+  List<File> _capturedImages = [];
+
+  // 3. 💡 원하셨던 내장 에셋 프레임 상점 리스트
+  // 앞으로 디자인이 추가되면 assets/ml/ 폴더에 PNG를 넣고 아래 리스트에 한 줄만 추가하면 끝납니다!
+  final List<CameraFrame> _availableFrames = [
+    CameraFrame(
+      id: 'classic_white_2x2', 
+      name: '클래식 화이트 (2x2)', 
+      layout: LayoutType.grid2x2, 
+      backgroundColor: Colors.white
+    ),
+    CameraFrame(
+      id: 'retro_black_1x4', 
+      name: '레트로 블랙 (1x4)', 
+      layout: LayoutType.strip1x4, 
+      backgroundColor: Colors.black
+    ),
+    CameraFrame(
+      id: 'custom_1', 
+      name: '기본 프레임', //직접 만든 프레임이긴 하나 가천대 프레임이 아님
+      layout: LayoutType.grid1x3, // 2x2 구조
+      assetPath: 'assets/ml/1.png'
+    ),
+    // 🔥 요청하신 가천 프레임 내장 예시
+    CameraFrame(
+      id: 'custom_2', 
+      name: '가천 프레임1', 
+      layout: LayoutType.strip1x3, // 1x3 구조
+      assetPath: 'assets/ml/2.png'  // pubspec 수정 없이 폴더 내부 매핑으로 동작
+    ),
+    CameraFrame(
+      id: 'custom_3', 
+      name: '가천 프레임2', 
+      layout: LayoutType.grid1x3, // 1x3 구조
+      assetPath: 'assets/ml/3.png'
+    ),
+  ];
+
+  late CameraFrame _selectedFrame;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFrame = _availableFrames.first;
+  }
+
+  int get _neededCount {
+    switch (_selectedFrame.layout) {
+      case LayoutType.grid2x2: return 4;
+      case LayoutType.strip1x4: return 4;
+      case LayoutType.strip1x3: return 3;
+    }
+  }
+
+  Future<void> _startShooting() async {
+    setState(() { _capturedImages.clear(); });
+    int total = _neededCount;
+
+    for (int i = 0; i < total; i++) {
+      final XFile? photo = await _picker.pickImage(
+        source: ImageSource.camera,
+        preferredCameraDevice: CameraDevice.front,
+      );
+      if (photo != null) {
+        setState(() { _capturedImages.add(File(photo.path)); });
+      } else {
+        break;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.grey[950],
+      appBar: AppBar(title: const Text('내장형 인생네컷 카메라'), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      body: Column(
+        children: [
+          // 상단 프레임 프리뷰 영역
+          Expanded(
+            flex: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Center(
+                child: _capturedImages.length < _neededCount
+                    ? Text(
+                        '🎨 현재 프레임: [ ${_selectedFrame.name} ]\n\n촬영을 시작하면 사진을 $_neededCount번 찍습니다.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                      )
+                    : Stack(
+                        children: [
+                          // 레이어 1: 유저가 촬영한 사진 격자 배치 (배경색 포함)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            color: _selectedFrame.backgroundColor,
+                            child: _buildPhotosByLayout(),
+                          ),
+                          // 4. 💡 레이어 2: 디자이너가 만든 내장 투명 PNG 액자를 그 위에 덮어씌움
+                          if (_selectedFrame.assetPath != null)
+                            Positioned.fill(
+                              child: Image.asset(
+                                _selectedFrame.assetPath!,
+                                fit: BoxFit.fill, // 액자가 화면에 빈틈없이 꽉 차도록 설정
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+
+          // 중단 프레임 아이템 스크롤 선택 바
+          Container(
+            height: 90,
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _availableFrames.length,
+              itemBuilder: (context, index) {
+                final frame = _availableFrames[index];
+                final isSelected = _selectedFrame.id == frame.id;
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedFrame = frame;
+                      _capturedImages.clear();
+                    });
+                  },
+                  child: Container(
+                    width: 140,
+                    margin: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: frame.assetPath != null ? Colors.grey[900] : frame.backgroundColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isSelected ? Colors.amber : Colors.grey[700]!, width: isSelected ? 4 : 1),
+                    ),
+                    child: Center(
+                      child: Text(
+                        frame.name,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: (frame.assetPath == null && frame.backgroundColor == Colors.white) ? Colors.black : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // 하단 촬영 버튼
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.black,
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _startShooting,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)),
+              child: Text('${_selectedFrame.name} 촬영 시작', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotosByLayout() {
+    switch (_selectedFrame.layout) {
+      case LayoutType.grid2x2:
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 3 / 4,
+          ),
+          itemCount: 4,
+          itemBuilder: (context, index) => _singleImage(index),
+        );
+      case LayoutType.strip1x4:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(4, (index) => Expanded(
+            child: Padding(padding: const EdgeInsets.only(bottom: 8.0), child: _singleImage(index)),
+          )),
+        );
+      case LayoutType.strip1x3:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) => Expanded(
+            child: Padding(padding: const EdgeInsets.only(bottom: 10.0), child: _singleImage(index)),
+          )),
+        );
+    }
+  }
+
+  Widget _singleImage(int index) {
+    if (index >= _capturedImages.length) return const SizedBox.shrink();
+    return Image.file(_capturedImages[index], fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+  }
+}

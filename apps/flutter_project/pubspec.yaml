@@ -111,6 +111,3 @@ flutter:
   assets:
     - assets/poses/
 
-flutter:
-  assets:
-    - assets/images/
