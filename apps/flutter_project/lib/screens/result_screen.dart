@@ -17,8 +17,14 @@ import '../services/sync_service.dart';
 class ResultScreen extends StatefulWidget {
   final FrameType selectedFrame;
   final List<XFile> photos;
+  final String? overlayFrame; // ← 추가: FrameSelectionScreen에서 직접 전달받음
 
-  const ResultScreen({super.key, required this.selectedFrame, required this.photos});
+  const ResultScreen({
+    super.key,
+    required this.selectedFrame,
+    required this.photos,
+    this.overlayFrame, // nullable: 선택 안 하면 null
+  });
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -34,6 +40,9 @@ class _ResultScreenState extends State<ResultScreen> {
     try {
       bool hasAccess = await Gal.hasAccess();
       if (!hasAccess) await Gal.requestAccess();
+
+      // 캡처 전 한 프레임 대기 → asset 이미지가 완전히 렌더된 후 캡처
+      await Future.delayed(const Duration(milliseconds: 300));
 
       // 1. 위젯 캡처 → 임시 파일 생성
       RenderRepaintBoundary boundary =
@@ -61,7 +70,7 @@ class _ResultScreenState extends State<ResultScreen> {
       // 4. 클라이언트 사이드 그루핑
       final groupingResult = await GroupingService().assignGroups(allEmbeddings);
 
-      // 5. 로컬 저장 (pendingUpload = true, 임베딩은 업로드 전까지만 보관)
+      // 5. 로컬 저장
       final localPhoto = LocalPhoto(
         path: file.path,
         frameType: widget.selectedFrame.name,
@@ -74,7 +83,7 @@ class _ResultScreenState extends State<ResultScreen> {
       );
       await PhotoStorageService().addPhoto(localPhoto);
 
-      // 6. 백그라운드에서 서버 업로드 시도 (실패해도 무시, 나중에 재시도)
+      // 6. 백그라운드 서버 업로드 시도
       if (allEmbeddings.isNotEmpty) {
         SyncService().enqueuePendingPhotos();
       }
@@ -125,7 +134,8 @@ class _ResultScreenState extends State<ResultScreen> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.download),
                     label: Text(_isSaving ? '저장 중...' : 'Save to Gallery'),
@@ -136,14 +146,13 @@ class _ResultScreenState extends State<ResultScreen> {
                   ),
                   const SizedBox(width: 16),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.popUntil(context, (route) => route.isFirst);
-                    },
+                    onPressed: () =>
+                        Navigator.popUntil(context, (route) => route.isFirst),
                     icon: const Icon(Icons.home),
                     label: const Text('Go Home'),
                   ),
                 ],
-              )
+              ),
             ],
           ),
         ),
@@ -152,49 +161,87 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Widget _buildRenderedStrip() {
-    return Container(
-      width: 220,
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: widget.selectedFrame == FrameType.trio ? Colors.pink[100] : Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.selectedFrame == FrameType.square)
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        // ── 기존 사진 스트립 ──────────────────────────────────────────────
+        Container(
+          width: 220,
+          // 커스텀 프레임 선택 시 padding 제거 → 사진이 커스텀 프레임 크기에 맞게
+          padding: widget.overlayFrame != null
+              ? EdgeInsets.zero
+              : const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            // 커스텀 프레임 선택 시 기본 배경색 투명 처리
+            color: widget.overlayFrame != null
+                ? Colors.transparent
+                : (widget.selectedFrame == FrameType.trio
+                    ? Colors.pink[100]
+                    : Colors.white),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.selectedFrame == FrameType.square)
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: widget.photos.length,
+                  itemBuilder: (context, index) => Image.file(
+                    File(widget.photos[index].path),
+                    fit: BoxFit.cover,
+                  ),
+                )
+              else
+                Column(
+                  children: widget.photos
+                      .map((photo) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: AspectRatio(
+                              aspectRatio: 3 / 2,
+                              child: Image.file(File(photo.path),
+                                  fit: BoxFit.cover),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              const SizedBox(height: 10),
+              const Text(
+                "pho's",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
               ),
-              itemCount: widget.photos.length,
-              itemBuilder: (context, index) =>
-                  Image.file(File(widget.photos[index].path), fit: BoxFit.cover),
-            )
-          else
-            Column(
-              children: widget.photos
-                  .map((photo) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: AspectRatio(
-                          aspectRatio: 3 / 2,
-                          child: Image.file(File(photo.path), fit: BoxFit.cover),
-                        ),
-                      ))
-                  .toList(),
+              Text(
+                DateTime.now().toString().substring(0, 10),
+                style: const TextStyle(fontSize: 10, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+
+        // ── 커스텀 오버레이 프레임: widget.overlayFrame으로 판단 ──────────
+        if (widget.overlayFrame != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Image.asset(
+                widget.overlayFrame!,
+                fit: BoxFit.fill,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
             ),
-          const SizedBox(height: 10),
-          const Text('pho\'s',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary)),
-          Text(DateTime.now().toString().substring(0, 10),
-              style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

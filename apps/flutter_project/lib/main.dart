@@ -4,11 +4,13 @@ import 'screens/main_layout.dart';
 import 'services/face_recognition_service.dart';
 import 'services/api_service.dart';
 import 'services/sync_service.dart';
+import 'services/frame_service.dart'; // ← 추가
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await FaceRecognitionService().initialize();
+  await FrameService().initialize(); // ← 추가: 저장된 프레임 불러오기
   await _ensureAppInstance();
 
   runApp(const PhotoBoothApp());
@@ -43,12 +45,12 @@ class PhotoBoothApp extends StatefulWidget {
   State<PhotoBoothApp> createState() => _PhotoBoothAppState();
 }
 
-class _PhotoBoothAppState extends State<PhotoBoothApp> with WidgetsBindingObserver {
+class _PhotoBoothAppState extends State<PhotoBoothApp>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // 앱 시작 시 한 번 동기화 시도
     SyncService().enqueuePendingPhotos();
   }
 
@@ -68,7 +70,7 @@ class _PhotoBoothAppState extends State<PhotoBoothApp> with WidgetsBindingObserv
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Pho\'s App',
+      title: "Pho's App",
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFFFAF9F6),
         primaryColor: const Color(0xFF9D72FF),
