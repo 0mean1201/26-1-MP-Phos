@@ -82,47 +82,64 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
 
   // ── 레이아웃 미리보기 (오버레이 포함) ────────────────────────────────────
   Widget _buildFrameLayoutPreview() {
-    return Container(
+    return SizedBox(
       width: 180,
       height: 250,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: _selectedFrame == FrameType.trio ? Colors.pink[100] : Colors.white,
-        border: Border.all(color: Colors.grey.shade300),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-      ),
       child: Stack(
-        fit: StackFit.expand,
         children: [
-          _selectedFrame == FrameType.square
-              ? GridView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 5,
-                    mainAxisSpacing: 5,
-                  ),
-                  itemCount: 4,
-                  itemBuilder: (_, __) => Container(color: Colors.grey.shade300),
-                )
-              : Column(
-                  children: List.generate(
-                    _selectedFrame.photoCount,
-                    (index) => Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 5),
-                        color: Colors.grey.shade300,
+          // ── 기본 프레임: 커스텀 선택 시 완전히 숨김 ──
+          Visibility(
+            visible: _pendingOverlayFileName == null,
+            child: Container(
+              width: 180,
+              height: 250,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _selectedFrame == FrameType.trio
+                    ? Colors.pink[100]
+                    : Colors.white,
+                border: Border.all(color: Colors.grey.shade300),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10),
+                ],
+              ),
+              child: _selectedFrame == FrameType.square
+                  ? GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 5,
+                        mainAxisSpacing: 5,
+                      ),
+                      itemCount: 4,
+                      itemBuilder: (_, __) =>
+                          Container(color: Colors.grey.shade300),
+                    )
+                  : Column(
+                      children: List.generate(
+                        _selectedFrame.photoCount,
+                        (index) => Expanded(
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 5),
+                            color: Colors.grey.shade300,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+            ),
+          ),
+
+          // ── 커스텀 프레임: 선택 시에만 표시 ──
           if (_pendingOverlayFileName != null)
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
               child: Image.asset(
                 'assets/frames/$_pendingOverlayFileName',
                 key: ValueKey(_pendingOverlayFileName),
-                fit: BoxFit.fill,
+                width: 180,
+                height: 250,
+                fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink(),
               ),
             ),
