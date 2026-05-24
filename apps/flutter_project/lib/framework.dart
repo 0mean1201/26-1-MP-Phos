@@ -51,21 +51,21 @@ class _BuiltInFrameCameraScreenState extends State<BuiltInFrameCameraScreen> {
     CameraFrame(
       id: 'custom_1', 
       name: '기본 프레임', //직접 만든 프레임이긴 하나 가천대 프레임이 아님
-      layout: LayoutType.grid1x3, // 2x2 구조
-      assetPath: 'assets/ml/1.png'
+      layout: LayoutType.strip1x3, // 1x3 구조
+      assetPath: 'lib/mobile/assets/1.png'
     ),
     // 🔥 요청하신 가천 프레임 내장 예시
     CameraFrame(
       id: 'custom_2', 
       name: '가천 프레임1', 
       layout: LayoutType.strip1x3, // 1x3 구조
-      assetPath: 'assets/ml/2.png'  // pubspec 수정 없이 폴더 내부 매핑으로 동작
+      assetPath: 'lib/mobile/assets/2.png'  // pubspec 수정 없이 폴더 내부 매핑으로 동작
     ),
     CameraFrame(
       id: 'custom_3', 
       name: '가천 프레임2', 
-      layout: LayoutType.grid1x3, // 1x3 구조
-      assetPath: 'assets/ml/3.png'
+      layout: LayoutType.strip1x3, // 1x3 구조
+      assetPath: 'lib/mobile/assets/3.png'
     ),
   ];
 
