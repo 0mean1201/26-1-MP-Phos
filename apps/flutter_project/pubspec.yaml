@@ -34,5 +34,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/ml/
-    - assets/poses/
+    - assets/poses/1_person.png
+    - assets/poses/2_person.png
+    - assets/poses/3_person.png
+    - assets/poses/4_person.png
     - assets/images/
