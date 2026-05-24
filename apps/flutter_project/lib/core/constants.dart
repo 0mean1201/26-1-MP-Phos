@@ -15,6 +15,7 @@ class AppColors {
   static const Color darkTextMain    = Color(0xFFF0EAFF);
   static const Color darkTextSub     = Color(0xFF9B8FBB);
   static const Color darkDivider     = Color(0xFF3D2E60);
+  static const Color darkSurface2 = Color(0xFF2C2C2C);
 
   /// 현재 테마에 맞는 색상을 리턴하는 헬퍼
   static Color bg(BuildContext context) =>
