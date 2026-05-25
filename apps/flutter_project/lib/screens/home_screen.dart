@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
 import 'dart:io';
 import 'frame_selection_screen.dart';
 import '../core/constants.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'gallery_screen.dart';
-import 'main_layout.dart';
+import '../core/app_state.dart';
+import '../services/photo_storage_service.dart';
 
 // ====================================================
 // 1. 홈 화면
 // ====================================================
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onViewAll;
+  const HomeScreen({super.key, this.onViewAll});
 
   @override
   Widget build(BuildContext context) {
@@ -77,13 +76,13 @@ class HomeScreen extends StatelessWidget {
                   Text('Latest Strips',
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textMain)),
                   TextButton(
-                    onPressed: () {},
+                    onPressed: onViewAll,
                     child: Text('VIEW ALL', style: TextStyle(color: primaryColor)),
                   ),
                 ],
               ),
               const SizedBox(height: 10),
-              const LatestStripsList(),
+              LatestStripsList(),
               const SizedBox(height: 80),
             ],
           ),
@@ -656,7 +655,7 @@ class LatestStripsList extends StatefulWidget {
 }
 
 class _LatestStripsListState extends State<LatestStripsList> {
-  List<SavedPhoto> _latestPhotos = [];
+  List<LocalPhoto> _latestPhotos = [];
   bool _isLoading = true;
 
   @override
@@ -666,16 +665,13 @@ class _LatestStripsListState extends State<LatestStripsList> {
   void didChangeDependencies() { super.didChangeDependencies(); _loadLatestPhotos(); }
 
   Future<void> _loadLatestPhotos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedStrings = prefs.getStringList('phos_gallery_data') ?? [];
-    final loaded = <SavedPhoto>[];
-    for (final s in savedStrings) {
-      final data = jsonDecode(s) as Map<String, dynamic>;
-      final type = FrameType.values.firstWhere(
-          (e) => e.name == data['frameType'], orElse: () => FrameType.classic);
-      loaded.add(SavedPhoto(path: data['path'], frameType: type, title: data['title'], tag: data['tag']));
+    final all = await PhotoStorageService().loadAll();
+    if (mounted) {
+      setState(() {
+        _latestPhotos = all.take(5).toList();
+        _isLoading = false;
+      });
     }
-    if (mounted) setState(() { _latestPhotos = loaded.reversed.take(5).toList(); _isLoading = false; });
   }
 
   @override
@@ -702,8 +698,8 @@ class _LatestStripsListState extends State<LatestStripsList> {
         itemCount: _latestPhotos.length,
         itemBuilder: (context, index) {
           final photo = _latestPhotos[index];
-          final fileStat = File(photo.path).statSync();
-          final dateStr = "${fileStat.modified.year}.${fileStat.modified.month.toString().padLeft(2,'0')}.${fileStat.modified.day.toString().padLeft(2,'0')}";
+          final date = DateTime.tryParse(photo.date) ?? DateTime.now();
+          final dateStr = "${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}";
           return Container(
             width: 160,
             margin: const EdgeInsets.only(right: 16, bottom: 10),
