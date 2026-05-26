@@ -6,10 +6,12 @@ import 'services/api_service.dart';
 import 'services/sync_service.dart';
 import 'core/constants.dart';
 import 'core/app_state.dart';
+import 'services/frame_service.dart'; // ← 추가
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FaceRecognitionService().initialize();
+  await FrameService().initialize(); // ← 추가: 저장된 프레임 불러오기
   await _ensureAppInstance();
   await _loadSavedTheme();
   runApp(const PhotoBoothApp());

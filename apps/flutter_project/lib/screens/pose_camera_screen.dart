@@ -12,11 +12,13 @@ import 'result_screen.dart';
 class PoseCameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
   final FrameType selectedFrame; // 💡 어떤 프레임인지 알아야 몇 장 찍을지 결정
+  final String? overlayFrame; // 💡 선택된 프레임의 오버레이 이미지 경로 (선택 사항)
 
   const PoseCameraScreen({
     super.key,
     required this.cameras,
     required this.selectedFrame,
+    this.overlayFrame, // 💡 선택된 프레임의 오버레이 이미지 경로 (선택 사항)
   });
 
   @override
@@ -166,6 +168,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
               builder: (_) => ResultScreen(
                 selectedFrame: widget.selectedFrame,
                 photos: _capturedPhotos,
+                overlayFrame: widget.overlayFrame, // 💡 프레임 선택 시 오버레이 이미지 전달
               ),
             ),
           );
