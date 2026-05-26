@@ -5,12 +5,24 @@ import 'services/face_recognition_service.dart';
 import 'services/api_service.dart';
 import 'services/sync_service.dart';
 import 'core/constants.dart';
+import 'core/app_state.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await FaceRecognitionService().initialize();
   await _ensureAppInstance();
+  await _loadSavedTheme();
   runApp(const PhotoBoothApp());
+}
+
+Future<void> _loadSavedTheme() async {
+  final prefs = await SharedPreferences.getInstance();
+  final saved = prefs.getString('phos_theme') ?? 'light';
+  themeNotifier.value = saved == 'dark' ? ThemeMode.dark : ThemeMode.light;
+  themeNotifier.addListener(() {
+    prefs.setString(
+        'phos_theme', themeNotifier.value == ThemeMode.dark ? 'dark' : 'light');
+  });
 }
 
 Future<void> _ensureAppInstance() async {
