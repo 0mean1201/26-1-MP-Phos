@@ -5,51 +5,55 @@ import '../core/constants.dart';
 import '../services/frame_service.dart';
 import 'pose_camera_screen.dart';
 import 'result_screen.dart';
- 
+
 class FrameSelectionScreen extends StatefulWidget {
   const FrameSelectionScreen({super.key});
- 
+
   @override
   State<FrameSelectionScreen> createState() => _FrameSelectionScreenState();
 }
- 
+
 class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     with SingleTickerProviderStateMixin {
   FrameType _selectedFrame = FrameType.classic;
   final ImagePicker _picker = ImagePicker();
   bool _isShooting = false;
- 
+
   final FrameService _frameService = FrameService();
   String? _pendingOverlayFileName;
- 
+
+  // ── 애니메이션 (기존과 동일) ───────────────────────────────────────────
   late final AnimationController _fadeController;
   late final Animation<double> _fadeIn;
- 
+
+  // ── 커스텀 프레임 카테고리 탭 (0: 기본, 1: 컨셉) ──────────────────────
+  int _frameCategoryIndex = 0;
+
   @override
   void initState() {
     super.initState();
     _pendingOverlayFileName = _frameService.selectedFileName;
- 
+
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
     )..forward();
     _fadeIn = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
   }
- 
+
   @override
   void dispose() {
     _fadeController.dispose();
     super.dispose();
   }
- 
-  // ── 인앱 카메라 (main 브랜치: PoseCameraScreen 연동) ──────────────────────
+
+  // ── 인앱 카메라 (기존과 동일) ─────────────────────────────────────────
   Future<void> _launchInAppCamera() async {
     final String? overlayPath = _pendingOverlayFileName != null
         ? 'assets/images/$_pendingOverlayFileName'
         : null;
     await _frameService.selectFrame(_pendingOverlayFileName);
- 
+
     setState(() => _isShooting = true);
     try {
       final cameras = await availableCameras();
@@ -75,14 +79,14 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
       if (mounted) setState(() => _isShooting = false);
     }
   }
- 
-  // ── 갤러리에서 선택 ───────────────────────────────────────────────────────
+
+  // ── 갤러리에서 선택 (기존과 동일) ────────────────────────────────────
   Future<void> _pickFromGallery() async {
     final String? overlayPath = _pendingOverlayFileName != null
         ? 'assets/images/$_pendingOverlayFileName'
         : null;
     await _frameService.selectFrame(_pendingOverlayFileName);
- 
+
     setState(() => _isShooting = true);
     final pickedPhotos = <XFile>[];
     final targetCount = _selectedFrame.photoCount;
@@ -113,20 +117,19 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
       if (mounted) setState(() => _isShooting = false);
     }
   }
- 
-  // ── 레이아웃 미리보기 (다크모드 + 오버레이 모두 반영) ──────────────────────
+
+  // ── 레이아웃 미리보기 (기존과 동일) ──────────────────────────────────
   Widget _buildFrameLayoutPreview(bool isDark) {
     final bgColor = isDark ? AppColors.darkSurface : Colors.white;
     final trioBg = isDark ? const Color(0xFF3D2040) : Colors.pink[100]!;
     final slotColor = isDark ? AppColors.darkSurface2 : Colors.grey.shade300;
     final borderColor = isDark ? AppColors.darkDivider : Colors.grey.shade300;
- 
+
     return SizedBox(
       width: 180,
       height: 250,
       child: Stack(
         children: [
-          // 기본 프레임: 커스텀 선택 시 숨김
           Visibility(
             visible: _pendingOverlayFileName == null,
             child: Container(
@@ -170,8 +173,6 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                     ),
             ),
           ),
- 
-          // 커스텀 프레임: 선택 시에만 표시
           if (_pendingOverlayFileName != null)
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
@@ -188,23 +189,65 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
       ),
     );
   }
- 
-  // ── 커스텀 프레임 가로 목록 ───────────────────────────────────────────────
+
+  // ── 카테고리 탭 버튼 ─────────────────────────────────────────────────
+  Widget _buildCategoryTabs(bool isDark, Color primaryColor) {
+    final labels = ['기본 프레임', '컨셉 프레임'];
+    return Row(
+      children: List.generate(2, (i) {
+        final isActive = _frameCategoryIndex == i;
+        return GestureDetector(
+          onTap: () => setState(() => _frameCategoryIndex = i),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            margin: EdgeInsets.only(left: i == 0 ? 20 : 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: isActive
+                  ? primaryColor
+                  : (isDark ? AppColors.darkSurface : Colors.grey.shade100),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isActive
+                    ? primaryColor
+                    : (isDark ? AppColors.darkDivider : Colors.grey.shade300),
+              ),
+            ),
+            child: Text(
+              labels[i],
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isActive
+                    ? Colors.white
+                    : (isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────────────────
   Widget _buildCustomFrameRow(bool isDark) {
-    final frames = FrameService.availableFrames;
     final primaryColor = AppColors.primaryOf(context);
- 
+    final frames = _frameCategoryIndex == 0
+        ? FrameService.basicFrames
+        : FrameService.conceptFrames;
+
     return SizedBox(
       height: 80,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        itemCount: frames.length + 1, // +1 for "없음" slot
+        // 기본 프레임 탭에만 "없음" 슬롯 추가
+        itemCount: (_frameCategoryIndex == 0 ? 1 : 0) + frames.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          // 첫 번째 슬롯 = "없음"
-          if (index == 0) {
+          // "없음" 슬롯 (기본 프레임 탭 첫 번째만)
+          if (_frameCategoryIndex == 0 && index == 0) {
             final isNone = _pendingOverlayFileName == null;
             return GestureDetector(
               onTap: () => setState(() => _pendingOverlayFileName = null),
@@ -230,16 +273,21 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                         size: 20,
                         color: isNone
                             ? primaryColor
-                            : (isDark ? Colors.grey.shade600 : Colors.grey.shade400)),
+                            : (isDark
+                                ? Colors.grey.shade600
+                                : Colors.grey.shade400)),
                     const SizedBox(height: 4),
                     Text(
                       '없음',
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: isNone ? FontWeight.w700 : FontWeight.w400,
+                        fontWeight:
+                            isNone ? FontWeight.w700 : FontWeight.w400,
                         color: isNone
                             ? primaryColor
-                            : (isDark ? Colors.grey.shade600 : Colors.grey.shade400),
+                            : (isDark
+                                ? Colors.grey.shade600
+                                : Colors.grey.shade400),
                       ),
                     ),
                   ],
@@ -247,10 +295,13 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
               ),
             );
           }
- 
-          final fileName = frames[index - 1];
+
+          // 프레임 썸네일
+          final frameIndex =
+              _frameCategoryIndex == 0 ? index - 1 : index;
+          final fileName = frames[frameIndex];
           final isSelected = _pendingOverlayFileName == fileName;
- 
+
           return GestureDetector(
             onTap: () => setState(() => _pendingOverlayFileName = fileName),
             child: AnimatedContainer(
@@ -283,10 +334,16 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                       width: double.infinity,
                       height: double.infinity,
                       errorBuilder: (_, __, ___) => Container(
-                        color: isDark ? AppColors.darkSurface2 : Colors.grey.shade100,
-                        child: Icon(Icons.broken_image_outlined,
-                            color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
-                            size: 20),
+                        color: isDark
+                            ? AppColors.darkSurface2
+                            : Colors.grey.shade100,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: isDark
+                              ? Colors.grey.shade600
+                              : Colors.grey.shade400,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ),
@@ -301,7 +358,8 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                           color: primaryColor,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.check, color: Colors.white, size: 10),
+                        child: const Icon(Icons.check,
+                            color: Colors.white, size: 10),
                       ),
                     ),
                 ],
@@ -312,14 +370,14 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
       ),
     );
   }
- 
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = AppColors.bg(context);
     final primaryColor = AppColors.primaryOf(context);
     final textMain = AppColors.textMainOf(context);
- 
+
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
@@ -328,7 +386,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // ── 헤더 ────────────────────────────────────────────────
+                // ── 헤더 (기존과 동일) ──────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
@@ -350,13 +408,13 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                     ],
                   ),
                 ),
- 
-                // ── 미리보기 ─────────────────────────────────────────────
+
+                // ── 미리보기 (기존과 동일) ───────────────────────────────
                 const SizedBox(height: 8),
                 _buildFrameLayoutPreview(isDark),
                 const SizedBox(height: 32),
- 
-                // ── 규격(FrameType) 선택 카드 ─────────────────────────────
+
+                // ── 규격(FrameType) 선택 카드 (기존과 동일) ─────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -371,10 +429,10 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                     );
                   }).toList(),
                 ),
- 
+
                 const SizedBox(height: 20),
- 
-                // ── 구분선 + 커스텀 프레임 라벨 ───────────────────────────
+
+                // ── 커스텀 프레임 라벨 + 구분선 ─────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -384,32 +442,41 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                          color: Colors.grey.shade500,
                           letterSpacing: 0.5,
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Divider(
-                          color: isDark ? AppColors.darkDivider : Colors.grey.shade300,
+                          color: isDark
+                              ? AppColors.darkDivider
+                              : Colors.grey.shade300,
                         ),
                       ),
                     ],
                   ),
                 ),
- 
+
+                const SizedBox(height: 10),
+
+                // ── 카테고리 탭 (기본 / 컨셉) ────────────────────────────
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildCategoryTabs(isDark, primaryColor),
+                ),
+
                 const SizedBox(height: 12),
- 
-                // ── 커스텀 프레임 가로 목록 ───────────────────────────────
+
+                // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────
                 _buildCustomFrameRow(isDark),
- 
+
                 const SizedBox(height: 40),
- 
-                // ── 촬영 버튼 ────────────────────────────────────────────
+
+                // ── 촬영 버튼 (기존과 동일) ──────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 갤러리 버튼
                     GestureDetector(
                       onTap: _isShooting ? null : _pickFromGallery,
                       child: Container(
@@ -420,12 +487,11 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                           shape: BoxShape.circle,
                           border: Border.all(color: primaryColor, width: 2),
                         ),
-                        child: Icon(Icons.photo_library, color: primaryColor, size: 24),
+                        child: Icon(Icons.photo_library,
+                            color: primaryColor, size: 24),
                       ),
                     ),
                     const SizedBox(width: 32),
- 
-                    // 카메라 버튼
                     GestureDetector(
                       onTap: _isShooting ? null : _launchInAppCamera,
                       child: Container(
@@ -445,7 +511,8 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                                 child: CircularProgressIndicator(
                                     color: Colors.white, strokeWidth: 3),
                               )
-                            : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+                            : const Icon(Icons.camera_alt,
+                                color: Colors.white, size: 30),
                       ),
                     ),
                     const SizedBox(width: 88),
@@ -460,30 +527,30 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     );
   }
 }
- 
-// ── FrameOptionCard (다크모드 대응) ──────────────────────────────────────────
+
+// ── FrameOptionCard (기존과 동일) ────────────────────────────────────────────
 class FrameOptionCard extends StatelessWidget {
   final FrameType frameType;
   final bool isSelected;
   final VoidCallback onTap;
- 
+
   const FrameOptionCard({
     super.key,
     required this.frameType,
     required this.isSelected,
     required this.onTap,
   });
- 
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = AppColors.primaryOf(context);
     final textSub = AppColors.textSubOf(context);
- 
+
     final normalBg = isDark ? AppColors.darkSurface : Colors.white;
     final trioBg = isDark ? const Color(0xFF3D2040) : Colors.pink[100]!;
     final boxColor = frameType == FrameType.trio ? trioBg : normalBg;
- 
+
     return GestureDetector(
       onTap: onTap,
       child: Column(
