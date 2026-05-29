@@ -232,9 +232,12 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
   // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────────────────
   Widget _buildCustomFrameRow(bool isDark) {
     final primaryColor = AppColors.primaryOf(context);
-    final frames = _frameCategoryIndex == 0
+    final compatible = FrameService.compatibleFrames(_selectedFrame.name);
+    final allFrames = _frameCategoryIndex == 0
         ? FrameService.basicFrames
         : FrameService.conceptFrames;
+    // 현재 FrameType과 호환되는 프레임만 필터링
+    final frames = allFrames.where((f) => compatible.contains(f)).toList();
 
     return SizedBox(
       height: 80,
@@ -424,7 +427,18 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                       child: FrameOptionCard(
                         frameType: frame,
                         isSelected: _selectedFrame == frame,
-                        onTap: () => setState(() => _selectedFrame = frame),
+                        onTap: () {
+                          setState(() {
+                            _selectedFrame = frame;
+                            // 선택된 커스텀 프레임이 새 FrameType과 호환 안 되면 해제
+                            if (_pendingOverlayFileName != null) {
+                              final compatible = FrameService.compatibleFrames(frame.name);
+                              if (!compatible.contains(_pendingOverlayFileName)) {
+                                _pendingOverlayFileName = null;
+                              }
+                            }
+                          });
+                        },
                       ),
                     );
                   }).toList(),
@@ -469,7 +483,28 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                 const SizedBox(height: 12),
 
                 // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────
-                _buildCustomFrameRow(isDark),
+                // solo는 호환 프레임 없음 → 안내 메시지 표시
+                if (FrameService.compatibleFrames(_selectedFrame.name).isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 16,
+                            color: isDark ? Colors.grey.shade500 : Colors.grey.shade400),
+                        const SizedBox(width: 6),
+                        Text(
+                          '이 규격에서는 커스텀 프레임을 사용할 수 없습니다.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  _buildCustomFrameRow(isDark),
 
                 const SizedBox(height: 40),
 
