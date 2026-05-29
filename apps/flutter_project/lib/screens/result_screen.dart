@@ -28,7 +28,67 @@ class _ResultScreenState extends State<ResultScreen> {
   final GlobalKey _globalKey = GlobalKey();
   bool _isSaving = false;
 
-  Future<void> _saveResultImage() async {
+  /// 저장 버튼 → 제목·태그 입력 다이얼로그를 띄운 뒤 실제 저장 진행
+  Future<void> _onSavePressed() async {
+    final titleController = TextEditingController();
+    final tagController = TextEditingController();
+    final primaryColor = AppColors.primaryOf(context);
+    final textMain = AppColors.textMainOf(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface(context),
+        title: Text('사진 정보 입력',
+            style: TextStyle(color: textMain, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '제목',
+                hintText: 'Untitled',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: tagController,
+              decoration: const InputDecoration(
+                labelText: '태그',
+                hintText: 'my_moment',
+                prefixText: '#',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            child: const Text('저장', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    final title = titleController.text.trim();
+    var tag = tagController.text.trim();
+    if (tag.startsWith('#')) tag = tag.substring(1).trim();
+
+    if (confirmed != true) return;
+    await _saveResultImage(
+      title: title.isEmpty ? 'Untitled' : title,
+      tag: tag.isEmpty ? 'my_moment' : tag,
+    );
+  }
+
+  Future<void> _saveResultImage({required String title, required String tag}) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     try {
@@ -65,8 +125,8 @@ class _ResultScreenState extends State<ResultScreen> {
       final localPhoto = LocalPhoto(
         path: file.path,
         frameType: widget.selectedFrame.name,
-        title: 'Untitled',
-        tag: 'my_moment',
+        title: title,
+        tag: tag,
         date: DateTime.now().toIso8601String(),
         groupIds: groupingResult.groupIds,
         pendingUpload: allEmbeddings.isNotEmpty,
@@ -100,8 +160,6 @@ class _ResultScreenState extends State<ResultScreen> {
     final bgColor = AppColors.bg(context);
     final primaryColor = AppColors.primaryOf(context);
     final textMain = AppColors.textMainOf(context);
-    final textSub = AppColors.textSubOf(context);
-    final surfaceColor = AppColors.surface(context);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -128,7 +186,7 @@ class _ResultScreenState extends State<ResultScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveResultImage,
+                    onPressed: _isSaving ? null : _onSavePressed,
                     icon: _isSaving
                         ? const SizedBox(
                             width: 18, height: 18,
