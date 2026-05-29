@@ -1,9 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import 'pose_camera_screen.dart';
-import 'result_screen.dart';
 
 class FrameSelectionScreen extends StatefulWidget {
   const FrameSelectionScreen({super.key});
@@ -30,27 +28,6 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen> {
           const SnackBar(content: Text('카메라를 열 수 없습니다. 권한을 확인해주세요.')),
         );
       }
-    } finally {
-      if (mounted) setState(() => _isShooting = false);
-    }
-  }
-
-  Future<void> _pickFromGallery() async {
-    setState(() => _isShooting = true);
-    final pickedPhotos = <XFile>[];
-    final targetCount = _selectedFrame.photoCount;
-    try {
-      for (int i = 0; i < targetCount; i++) {
-        final XFile? photo = await ImagePicker().pickImage(source: ImageSource.gallery);
-        if (photo != null) pickedPhotos.add(photo); else break;
-      }
-      if (pickedPhotos.length == targetCount && mounted) {
-        Navigator.push(context, MaterialPageRoute(
-          builder: (_) => ResultScreen(selectedFrame: _selectedFrame, photos: pickedPhotos),
-        ));
-      }
-    } catch (e) {
-      debugPrint('갤러리 오류: $e');
     } finally {
       if (mounted) setState(() => _isShooting = false);
     }
@@ -145,43 +122,21 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen> {
             const SizedBox(height: 50),
 
             // 촬영 버튼
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // 갤러리 버튼
-                GestureDetector(
-                  onTap: _isShooting ? null : _pickFromGallery,
-                  child: Container(
-                    width: 56, height: 56,
-                    decoration: BoxDecoration(
-                      color: AppColors.surface(context),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: primaryColor, width: 2),
-                    ),
-                    child: Icon(Icons.photo_library, color: primaryColor, size: 24),
-                  ),
+            GestureDetector(
+              onTap: _isShooting ? null : _launchInAppCamera,
+              child: Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: primaryColor.withOpacity(0.3), width: 8),
                 ),
-                const SizedBox(width: 32),
-
-                // 카메라 버튼
-                GestureDetector(
-                  onTap: _isShooting ? null : _launchInAppCamera,
-                  child: Container(
-                    width: 80, height: 80,
-                    decoration: BoxDecoration(
-                      color: primaryColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: primaryColor.withOpacity(0.3), width: 8),
-                    ),
-                    child: _isShooting
-                        ? const Padding(
-                            padding: EdgeInsets.all(22),
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                        : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
-                  ),
-                ),
-                const SizedBox(width: 88),
-              ],
+                child: _isShooting
+                    ? const Padding(
+                        padding: EdgeInsets.all(22),
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                    : const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+              ),
             ),
             const SizedBox(height: 100),
           ],

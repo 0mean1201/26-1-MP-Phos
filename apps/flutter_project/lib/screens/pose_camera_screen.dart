@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../core/constants.dart';
-import 'result_screen.dart';
+import 'cut_selection_screen.dart';
 
 class PoseCameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -44,8 +44,12 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   String _currentPoseImagePath = '';
   Timer? _hideImageTimer;
 
-  // 💡 촬영 결과 누적 리스트 (ResultScreen에 전달)
+  // 💡 촬영 결과 누적 리스트 (CutSelectionScreen에 전달)
   final List<XFile> _capturedPhotos = [];
+
+  /// 프레임 필요 장수보다 여유분을 더 찍어 컷 선택의 여지를 둔다.
+  static const int _extraShots = 2;
+  int get _captureTarget => widget.selectedFrame.photoCount + _extraShots;
 
   // 셔터 버튼 애니메이션 컨트롤러
   late AnimationController _shutterAnimController;
@@ -155,15 +159,13 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
 
       _capturedPhotos.add(photo);
 
-      final int needed = widget.selectedFrame.photoCount;
-
-      if (_capturedPhotos.length >= needed) {
-        // 💡 필요한 장수를 다 찍었으면 ResultScreen으로 이동
+      if (_capturedPhotos.length >= _captureTarget) {
+        // 💡 목표 장수를 다 찍었으면 컷 선택 화면으로 이동
         if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => ResultScreen(
+              builder: (_) => CutSelectionScreen(
                 selectedFrame: widget.selectedFrame,
                 photos: _capturedPhotos,
               ),
@@ -217,7 +219,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       );
     }
 
-    final int totalCount = widget.selectedFrame.photoCount;
+    final int totalCount = _captureTarget;
     final int takenCount = _capturedPhotos.length;
 
     return Scaffold(
@@ -343,6 +345,15 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '여러 장 찍고 마음에 드는 ${widget.selectedFrame.photoCount}컷을 고르세요',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
                         shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                       ),
                     ),
