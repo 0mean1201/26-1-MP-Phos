@@ -3,7 +3,10 @@ import 'dart:io';
 import 'frame_selection_screen.dart';
 import '../core/constants.dart';
 import '../core/app_state.dart';
+import '../core/auth_state.dart';
 import '../services/photo_storage_service.dart';
+import '../services/auth_service.dart';
+import '../services/api_service.dart';
 
 // ====================================================
 // 1. 홈 화면
@@ -95,8 +98,34 @@ class HomeScreen extends StatelessWidget {
 // ====================================================
 // 2. Drawer
 // ====================================================
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   const AppDrawer({super.key});
+  @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  bool _isLoading = false;
+
+  Future<void> _handleSignIn(BuildContext ctx) async {
+    setState(() => _isLoading = true);
+    try {
+      await AuthService().signInWithGoogle(ApiService().appInstanceId);
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(
+          SnackBar(content: Text('로그인 실패: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _handleSignOut(BuildContext ctx) async {
+    await AuthService().signOut();
+    if (ctx.mounted) Navigator.pop(ctx);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +164,35 @@ class AppDrawer extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+
+            // ── 계정 섹션
+            _SectionLabel(label: '계정', color: textSub),
+            const SizedBox(height: 8),
+            ValueListenableBuilder<AuthUser?>(
+              valueListenable: authNotifier,
+              builder: (context, user, _) {
+                if (user != null) {
+                  return _AccountTile(
+                    user: user,
+                    primaryColor: primaryColor,
+                    textMain: textMain,
+                    textSub: textSub,
+                    onSignOut: () => _handleSignOut(context),
+                  );
+                }
+                return _GoogleSignInButton(
+                  isLoading: _isLoading,
+                  primaryColor: primaryColor,
+                  textMain: textMain,
+                  onTap: () => _handleSignIn(context),
+                );
+              },
+            ),
+
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Divider(color: AppColors.dividerOf(context)),
+            ),
 
             // ── 설정 섹션
             _SectionLabel(label: '설정', color: textSub),
@@ -641,6 +699,144 @@ class _DrawerTile extends StatelessWidget {
           : null,
       trailing: trailing ?? Icon(Icons.chevron_right, color: subtitleColor),
       onTap: onTap,
+    );
+  }
+}
+
+// ── 로그인된 계정 타일
+class _AccountTile extends StatelessWidget {
+  final AuthUser user;
+  final Color primaryColor, textMain, textSub;
+  final VoidCallback onSignOut;
+
+  const _AccountTile({
+    required this.user,
+    required this.primaryColor,
+    required this.textMain,
+    required this.textSub,
+    required this.onSignOut,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: primaryColor.withValues(alpha: 0.15),
+                backgroundImage:
+                    user.picture != null ? NetworkImage(user.picture!) : null,
+                child: user.picture == null
+                    ? Text(
+                        user.name.isNotEmpty ? user.name[0].toUpperCase() : '?',
+                        style: TextStyle(
+                            color: primaryColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(user.name,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: textMain),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    Text(user.email,
+                        style: TextStyle(fontSize: 11, color: textSub),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onSignOut,
+              icon: const Icon(Icons.logout, size: 16),
+              label: const Text('로그아웃', style: TextStyle(fontSize: 13)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: textSub,
+                side: BorderSide(color: textSub.withValues(alpha: 0.4)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Google 로그인 버튼
+class _GoogleSignInButton extends StatelessWidget {
+  final bool isLoading;
+  final Color primaryColor, textMain;
+  final VoidCallback onTap;
+
+  const _GoogleSignInButton({
+    required this.isLoading,
+    required this.primaryColor,
+    required this.textMain,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: isLoading ? null : onTap,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: textMain,
+            side: BorderSide(color: primaryColor.withValues(alpha: 0.5)),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: isLoading
+              ? SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: primaryColor),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.network(
+                      'https://developers.google.com/identity/images/g-logo.png',
+                      width: 18,
+                      height: 18,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.account_circle, size: 18),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text('Google로 로그인',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+        ),
+      ),
     );
   }
 }
