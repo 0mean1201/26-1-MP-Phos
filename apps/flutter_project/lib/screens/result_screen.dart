@@ -1,92 +1,162 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
- 
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:gal/gal.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
- 
+
 import '../core/constants.dart';
 import '../services/face_recognition_service.dart';
 import '../services/grouping_service.dart';
 import '../services/photo_storage_service.dart';
 import '../services/sync_service.dart';
- 
+
 class ResultScreen extends StatefulWidget {
   final FrameType selectedFrame;
   final List<XFile> photos;
-  final String? overlayFrame; // 커스텀 프레임 오버레이 경로 (없으면 null)
- 
+  final String? overlayFrame; // 커스텀 프레임 경로 (없으면 null)
+
   const ResultScreen({
     super.key,
     required this.selectedFrame,
     required this.photos,
     this.overlayFrame,
   });
- 
+
   @override
   State<ResultScreen> createState() => _ResultScreenState();
 }
- 
+
 class _ResultScreenState extends State<ResultScreen> {
   final GlobalKey _globalKey = GlobalKey();
   bool _isSaving = false;
- 
-  Future<void> _saveResultImage() async {
+
+  // ── 저장 버튼: 제목·태그 입력 다이얼로그 (공동 작업자 코드) ─────────────
+  Future<void> _onSavePressed() async {
+    final titleController = TextEditingController();
+    final tagController = TextEditingController();
+    final primaryColor = AppColors.primaryOf(context);
+    final textMain = AppColors.textMainOf(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface(context),
+        title: Text(
+          '사진 정보 입력',
+          style: TextStyle(color: textMain, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '제목',
+                hintText: 'Untitled',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: tagController,
+              decoration: const InputDecoration(
+                labelText: '태그',
+                hintText: 'my_moment',
+                prefixText: '#',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            child: const Text('저장', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final title = titleController.text.trim();
+    var tag = tagController.text.trim();
+    if (tag.startsWith('#')) tag = tag.substring(1).trim();
+
+    await _saveResultImage(
+      title: title.isEmpty ? 'Untitled' : title,
+      tag: tag.isEmpty ? 'my_moment' : tag,
+    );
+  }
+
+  // ── 실제 저장 로직 ────────────────────────────────────────────────────
+  Future<void> _saveResultImage({
+    required String title,
+    required String tag,
+  }) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     try {
       bool hasAccess = await Gal.hasAccess();
       if (!hasAccess) await Gal.requestAccess();
- 
-      // 캡처 전 한 프레임 대기 → asset 이미지가 완전히 렌더된 후 캡처
+
+      // asset 이미지가 완전히 렌더된 후 캡처 (내 코드)
       await Future.delayed(const Duration(milliseconds: 300));
- 
-      // 1. 위젯 캡처 → 임시 파일 생성
+
+      // 1. 위젯 캡처 → 임시 파일
       RenderRepaintBoundary boundary =
-          _globalKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+          _globalKey.currentContext!.findRenderObject()
+              as RenderRepaintBoundary;
       ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      ByteData? byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
       Uint8List pngBytes = byteData!.buffer.asUint8List();
- 
+
       final appDir = await getApplicationDocumentsDirectory();
       final fileName =
           'phos_${widget.selectedFrame.name}_${DateTime.now().millisecondsSinceEpoch}.png';
       final file = await File('${appDir.path}/$fileName').create();
       await file.writeAsBytes(pngBytes);
- 
+
       // 2. 갤러리에 저장
       await Gal.putImage(file.path);
- 
-      // 3. 각 원본 사진에서 얼굴 임베딩 추출
+
+      // 3. 얼굴 임베딩 추출
       final allEmbeddings = <List<double>>[];
       for (final photo in widget.photos) {
         final embeddings = await FaceRecognitionService().getEmbeddings(photo);
         allEmbeddings.addAll(embeddings);
       }
- 
-      // 4. 클라이언트 사이드 그루핑
-      final groupingResult = await GroupingService().assignGroups(allEmbeddings);
- 
-      // 5. 로컬 저장
+
+      // 4. 그루핑
+      final groupingResult =
+          await GroupingService().assignGroups(allEmbeddings);
+
+      // 5. 로컬 저장 (제목·태그 포함 — 공동 작업자 코드)
       final localPhoto = LocalPhoto(
         path: file.path,
         frameType: widget.selectedFrame.name,
-        title: 'Untitled',
-        tag: 'my_moment',
+        title: title,
+        tag: tag,
         date: DateTime.now().toIso8601String(),
         groupIds: groupingResult.groupIds,
         pendingUpload: allEmbeddings.isNotEmpty,
-        pendingVectors: allEmbeddings.isNotEmpty ? groupingResult.vectors : null,
+        pendingVectors:
+            allEmbeddings.isNotEmpty ? groupingResult.vectors : null,
       );
       await PhotoStorageService().addPhoto(localPhoto);
- 
+
       // 6. 백그라운드 서버 업로드 시도
       if (allEmbeddings.isNotEmpty) SyncService().enqueuePendingPhotos();
- 
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('갤러리에 저장되었습니다!')),
@@ -103,64 +173,72 @@ class _ResultScreenState extends State<ResultScreen> {
       if (mounted) setState(() => _isSaving = false);
     }
   }
- 
+
+  // ── 빌드 ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = AppColors.bg(context);
     final primaryColor = AppColors.primaryOf(context);
     final textMain = AppColors.textMainOf(context);
- 
+
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
         backgroundColor: isDark ? AppColors.darkSurface : Colors.transparent,
         elevation: 0,
         iconTheme: IconThemeData(color: textMain),
-        title: Text('Result', style: TextStyle(color: textMain, fontWeight: FontWeight.bold)),
+        title: Text('Result',
+            style:
+                TextStyle(color: textMain, fontWeight: FontWeight.bold)),
       ),
       body: Center(
         child: SingleChildScrollView(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // 프레임 렌더링 (저장용이므로 항상 흰 배경 유지)
               RepaintBoundary(
                 key: _globalKey,
                 child: _buildRenderedStrip(),
               ),
               const SizedBox(height: 40),
- 
-              // 버튼 영역
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveResultImage,
+                    // 저장 버튼: 다이얼로그 먼저 띄움 (공동 작업자 코드)
+                    onPressed: _isSaving ? null : _onSavePressed,
                     icon: _isSaving
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.download),
                     label: Text(_isSaving ? '저장 중...' : 'Save to Gallery'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(width: 16),
                   OutlinedButton.icon(
-                    onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+                    onPressed: () =>
+                        Navigator.popUntil(context, (route) => route.isFirst),
                     icon: Icon(Icons.home, color: primaryColor),
-                    label: Text('Go Home', style: TextStyle(color: primaryColor)),
+                    label: Text('Go Home',
+                        style: TextStyle(color: primaryColor)),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: primaryColor),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                 ],
@@ -172,15 +250,16 @@ class _ResultScreenState extends State<ResultScreen> {
       ),
     );
   }
- 
+
+  // ── 렌더링: 커스텀 프레임 여부로 분기 ────────────────────────────────
   Widget _buildRenderedStrip() {
     if (widget.overlayFrame != null) {
       return _buildCustomFrameStrip();
     }
     return _buildDefaultStrip();
   }
- 
-  /// 기본 프레임 (오버레이 없음) — main 브랜치 기존 로직 유지
+
+  // ── 기본 프레임 (내 코드 기반, 공동 작업자 스타일 유지) ──────────────
   Widget _buildDefaultStrip() {
     final isTrioFrame = widget.selectedFrame == FrameType.trio;
     return Container(
@@ -188,7 +267,9 @@ class _ResultScreenState extends State<ResultScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: isTrioFrame ? Colors.pink[100] : Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -197,14 +278,17 @@ class _ResultScreenState extends State<ResultScreen> {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
               ),
               itemCount: widget.photos.length,
-              itemBuilder: (context, index) =>
-                  Image.file(File(widget.photos[index].path), fit: BoxFit.cover),
+              itemBuilder: (context, index) => Image.file(
+                File(widget.photos[index].path),
+                fit: BoxFit.cover,
+              ),
             )
           else
             Column(
@@ -213,7 +297,8 @@ class _ResultScreenState extends State<ResultScreen> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: AspectRatio(
                           aspectRatio: 3 / 2,
-                          child: Image.file(File(photo.path), fit: BoxFit.cover),
+                          child: Image.file(File(photo.path),
+                              fit: BoxFit.cover),
                         ),
                       ))
                   .toList(),
@@ -221,7 +306,10 @@ class _ResultScreenState extends State<ResultScreen> {
           const SizedBox(height: 10),
           const Text(
             "pho's",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary),
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary),
           ),
           Text(
             DateTime.now().toString().substring(0, 10),
@@ -231,9 +319,8 @@ class _ResultScreenState extends State<ResultScreen> {
       ),
     );
   }
- 
-  /// 파일명별 슬롯 좌표 맵 (픽셀 분석으로 자동 추출한 비율값)
-  /// 각 항목: [left, top, right, bottom] 비율 (0.0 ~ 1.0)
+
+  // ── 슬롯 좌표 맵 (내 코드 전체 유지) ────────────────────────────────
   static const Map<String, List<List<double>>> _frameSlots = {
     '1.png':  [[0.1481,0.0927,0.8426,0.3146],[0.1519,0.3573,0.8463,0.5792],[0.1519,0.6240,0.8463,0.8453]],
     '2.png':  [[0.1491,0.0938,0.8407,0.3135],[0.1537,0.3578,0.8444,0.5781],[0.1537,0.6245,0.8444,0.8448]],
@@ -248,6 +335,7 @@ class _ResultScreenState extends State<ResultScreen> {
     '11.png': [[0.0718,0.0683,0.477, 0.423],[0.5387,0.0683,0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
     '12.png': [[0.1574,0.0667,0.8417,0.2927],[0.1574,0.3214,0.8417,0.5474],[0.1574,0.5760,0.8417,0.8021]],
     '13.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5469],[0.1574,0.5760,0.8417,0.8021]],
+    '14.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
     '15.png': [[0.075,0.0317,0.9225,0.2033],[0.075,0.2267,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
     '16.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4208,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
     '17.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
@@ -278,20 +366,17 @@ class _ResultScreenState extends State<ResultScreen> {
     '25.png': 1920/1080, '26.png': 1920/1080, '27.png': 1260/891,
     '28.png': 1260/891,  '29.png': 1200/400,  '30.png': 1200/400,
   };
- 
-  /// 커스텀 프레임 — 프레임 이미지 위에 사진을 정확한 좌표에 배치
+
+  // ── 커스텀 프레임 스트립 (내 코드 전체 유지) ─────────────────────────
   Widget _buildCustomFrameStrip() {
     final fileName = widget.overlayFrame!.split('/').last;
     final slots = _frameSlots[fileName];
 
-    if (slots == null) {
-      return _buildDefaultStrip();
-    }
+    if (slots == null) return _buildDefaultStrip();
 
     const double frameW = 300.0;
     final double aspectRatio = _frameAspectRatio[fileName] ?? (1920 / 1080);
     final double frameH = frameW * aspectRatio;
-
     final usedSlots = slots.take(widget.photos.length).toList();
 
     return SizedBox(
@@ -299,25 +384,26 @@ class _ResultScreenState extends State<ResultScreen> {
       height: frameH,
       child: Stack(
         children: [
-          // 1) 각 슬롯에 사진 배치 (아래)
+          // 1) 사진 (아래 레이어)
           for (int i = 0; i < usedSlots.length; i++)
             Positioned(
-              left: frameW * usedSlots[i][0],
-              top: frameH * usedSlots[i][1],
-              width: frameW * (usedSlots[i][2] - usedSlots[i][0]),
+              left:   frameW * usedSlots[i][0],
+              top:    frameH * usedSlots[i][1],
+              width:  frameW * (usedSlots[i][2] - usedSlots[i][0]),
               height: frameH * (usedSlots[i][3] - usedSlots[i][1]),
               child: Image.file(
                 File(widget.photos[i].path),
                 fit: BoxFit.cover,
               ),
             ),
-
-          // 2) 커스텀 프레임 이미지 (위)
+          // 2) 프레임 이미지 (위 레이어 — 장식이 사진을 자연스럽게 덮음)
           Positioned.fill(
-            child: Image.asset(
-              widget.overlayFrame!,
-              fit: BoxFit.fill,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            child: IgnorePointer(
+              child: Image.asset(
+                widget.overlayFrame!,
+                fit: BoxFit.fill,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
             ),
           ),
         ],

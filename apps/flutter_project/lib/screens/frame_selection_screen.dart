@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import '../services/frame_service.dart';
+import 'cut_selection_screen.dart';
 import 'pose_camera_screen.dart';
-import 'result_screen.dart';
 
 class FrameSelectionScreen extends StatefulWidget {
   const FrameSelectionScreen({super.key});
@@ -15,25 +15,23 @@ class FrameSelectionScreen extends StatefulWidget {
 
 class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     with SingleTickerProviderStateMixin {
+  // ── 기존 공통 상태 ─────────────────────────────────────────────────────
   FrameType _selectedFrame = FrameType.classic;
-  final ImagePicker _picker = ImagePicker();
   bool _isShooting = false;
 
+  // ── 커스텀 프레임 상태 (내 코드) ──────────────────────────────────────
   final FrameService _frameService = FrameService();
   String? _pendingOverlayFileName;
+  int _frameCategoryIndex = 0; // 0: 기본, 1: 컨셉
 
-  // ── 애니메이션 (기존과 동일) ───────────────────────────────────────────
+  // ── 페이드 애니메이션 ──────────────────────────────────────────────────
   late final AnimationController _fadeController;
   late final Animation<double> _fadeIn;
-
-  // ── 커스텀 프레임 카테고리 탭 (0: 기본, 1: 컨셉) ──────────────────────
-  int _frameCategoryIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _pendingOverlayFileName = _frameService.selectedFileName;
-
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -47,7 +45,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     super.dispose();
   }
 
-  // ── 인앱 카메라 (기존과 동일) ─────────────────────────────────────────
+  // ── 인앱 카메라 (공동 작업자 코드 유지 — PoseCameraScreen 연동) ─────────
   Future<void> _launchInAppCamera() async {
     final String? overlayPath = _pendingOverlayFileName != null
         ? 'assets/images/$_pendingOverlayFileName'
@@ -80,7 +78,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     }
   }
 
-  // ── 갤러리에서 선택 (기존과 동일) ────────────────────────────────────
+  // ── 갤러리에서 선택 → CutSelectionScreen으로 연결 ────────────────────
   Future<void> _pickFromGallery() async {
     final String? overlayPath = _pendingOverlayFileName != null
         ? 'assets/images/$_pendingOverlayFileName'
@@ -88,29 +86,21 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     await _frameService.selectFrame(_pendingOverlayFileName);
 
     setState(() => _isShooting = true);
-    final pickedPhotos = <XFile>[];
-    final targetCount = _selectedFrame.photoCount;
     try {
-      for (int i = 0; i < targetCount; i++) {
-        final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
-        if (photo != null) {
-          pickedPhotos.add(photo);
-        } else {
-          break;
-        }
-      }
-      if (pickedPhotos.length == targetCount && mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ResultScreen(
-              selectedFrame: _selectedFrame,
-              photos: pickedPhotos,
-              overlayFrame: overlayPath,
-            ),
+      final picked = await ImagePicker().pickMultiImage();
+      if (picked.isEmpty || !mounted) return;
+
+      // 필요한 컷 수보다 적게 골랐어도 CutSelectionScreen에서 추가 가능
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CutSelectionScreen(
+            selectedFrame: _selectedFrame,
+            photos: picked,
+            overlayFrame: overlayPath,
           ),
-        );
-      }
+        ),
+      );
     } catch (e) {
       debugPrint('갤러리 오류: $e');
     } finally {
@@ -118,7 +108,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     }
   }
 
-  // ── 레이아웃 미리보기 (기존과 동일) ──────────────────────────────────
+  // ── 레이아웃 미리보기 (내 코드 + 공동 작업자 다크모드 색상 유지) ─────────
   Widget _buildFrameLayoutPreview(bool isDark) {
     final bgColor = isDark ? AppColors.darkSurface : Colors.white;
     final trioBg = isDark ? const Color(0xFF3D2040) : Colors.pink[100]!;
@@ -130,6 +120,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
       height: 250,
       child: Stack(
         children: [
+          // 기본 프레임: 커스텀 선택 시 Visibility로 완전히 숨김
           Visibility(
             visible: _pendingOverlayFileName == null,
             child: Container(
@@ -173,6 +164,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                     ),
             ),
           ),
+          // 커스텀 프레임 미리보기
           if (_pendingOverlayFileName != null)
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
@@ -190,7 +182,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     );
   }
 
-  // ── 카테고리 탭 버튼 ─────────────────────────────────────────────────
+  // ── 카테고리 탭 (기본 / 컨셉) ──────────────────────────────────────────
   Widget _buildCategoryTabs(bool isDark, Color primaryColor) {
     final labels = ['기본 프레임', '컨셉 프레임'];
     return Row(
@@ -229,15 +221,36 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
     );
   }
 
-  // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────────────────
+  // ── 커스텀 프레임 가로 목록 (FrameType 호환 + 카테고리 필터) ─────────────
   Widget _buildCustomFrameRow(bool isDark) {
     final primaryColor = AppColors.primaryOf(context);
     final compatible = FrameService.compatibleFrames(_selectedFrame.name);
     final allFrames = _frameCategoryIndex == 0
         ? FrameService.basicFrames
         : FrameService.conceptFrames;
-    // 현재 FrameType과 호환되는 프레임만 필터링
     final frames = allFrames.where((f) => compatible.contains(f)).toList();
+
+    // 호환 프레임이 없는 경우 (solo 등) 안내 메시지
+    if (FrameService.compatibleFrames(_selectedFrame.name).isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          children: [
+            Icon(Icons.info_outline,
+                size: 16,
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade400),
+            const SizedBox(width: 6),
+            Text(
+              '이 규격에서는 커스텀 프레임을 사용할 수 없습니다.',
+              style: TextStyle(
+                fontSize: 12,
+                color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return SizedBox(
       height: 80,
@@ -245,11 +258,10 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        // 기본 프레임 탭에만 "없음" 슬롯 추가
         itemCount: (_frameCategoryIndex == 0 ? 1 : 0) + frames.length,
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemBuilder: (context, index) {
-          // "없음" 슬롯 (기본 프레임 탭 첫 번째만)
+          // "없음" 슬롯 (기본 탭 첫 번째)
           if (_frameCategoryIndex == 0 && index == 0) {
             final isNone = _pendingOverlayFileName == null;
             return GestureDetector(
@@ -265,7 +277,9 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                   border: Border.all(
                     color: isNone
                         ? primaryColor
-                        : (isDark ? AppColors.darkDivider : Colors.grey.shade300),
+                        : (isDark
+                            ? AppColors.darkDivider
+                            : Colors.grey.shade300),
                     width: isNone ? 2 : 1,
                   ),
                 ),
@@ -299,9 +313,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
             );
           }
 
-          // 프레임 썸네일
-          final frameIndex =
-              _frameCategoryIndex == 0 ? index - 1 : index;
+          final frameIndex = _frameCategoryIndex == 0 ? index - 1 : index;
           final fileName = frames[frameIndex];
           final isSelected = _pendingOverlayFileName == fileName;
 
@@ -315,7 +327,9 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                 border: Border.all(
                   color: isSelected
                       ? primaryColor
-                      : (isDark ? AppColors.darkDivider : Colors.grey.shade300),
+                      : (isDark
+                          ? AppColors.darkDivider
+                          : Colors.grey.shade300),
                   width: isSelected ? 2 : 1,
                 ),
                 boxShadow: isSelected
@@ -389,7 +403,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
           child: SingleChildScrollView(
             child: Column(
               children: [
-                // ── 헤더 (기존과 동일) ──────────────────────────────────
+                // ── 헤더 ────────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.all(20.0),
                   child: Row(
@@ -412,12 +426,12 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                   ),
                 ),
 
-                // ── 미리보기 (기존과 동일) ───────────────────────────────
+                // ── 미리보기 ─────────────────────────────────────────────
                 const SizedBox(height: 8),
                 _buildFrameLayoutPreview(isDark),
                 const SizedBox(height: 32),
 
-                // ── 규격(FrameType) 선택 카드 (기존과 동일) ─────────────
+                // ── 규격 선택 카드 ───────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -430,7 +444,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                         onTap: () {
                           setState(() {
                             _selectedFrame = frame;
-                            // 선택된 커스텀 프레임이 새 FrameType과 호환 안 되면 해제
+                            // 호환 안 되는 커스텀 프레임 자동 해제
                             if (_pendingOverlayFileName != null) {
                               final compatible = FrameService.compatibleFrames(frame.name);
                               if (!compatible.contains(_pendingOverlayFileName)) {
@@ -446,7 +460,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
 
                 const SizedBox(height: 20),
 
-                // ── 커스텀 프레임 라벨 + 구분선 ─────────────────────────
+                // ── 커스텀 프레임 라벨 + 구분선 ──────────────────────────
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: Row(
@@ -474,7 +488,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
 
                 const SizedBox(height: 10),
 
-                // ── 카테고리 탭 (기본 / 컨셉) ────────────────────────────
+                // ── 카테고리 탭 ──────────────────────────────────────────
                 Align(
                   alignment: Alignment.centerLeft,
                   child: _buildCategoryTabs(isDark, primaryColor),
@@ -482,36 +496,17 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
 
                 const SizedBox(height: 12),
 
-                // ── 커스텀 프레임 가로 목록 (카테고리별) ─────────────────
-                // solo는 호환 프레임 없음 → 안내 메시지 표시
-                if (FrameService.compatibleFrames(_selectedFrame.name).isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    child: Row(
-                      children: [
-                        Icon(Icons.info_outline,
-                            size: 16,
-                            color: isDark ? Colors.grey.shade500 : Colors.grey.shade400),
-                        const SizedBox(width: 6),
-                        Text(
-                          '이 규격에서는 커스텀 프레임을 사용할 수 없습니다.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? Colors.grey.shade500 : Colors.grey.shade400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  _buildCustomFrameRow(isDark),
+                // ── 커스텀 프레임 목록 ───────────────────────────────────
+                _buildCustomFrameRow(isDark),
 
                 const SizedBox(height: 40),
 
-                // ── 촬영 버튼 (기존과 동일) ──────────────────────────────
+                // ── 촬영 버튼 영역 ───────────────────────────────────────
+                // 갤러리 버튼(좌) + 카메라 버튼(중) 배치
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    // 갤러리 버튼
                     GestureDetector(
                       onTap: _isShooting ? null : _pickFromGallery,
                       child: Container(
@@ -527,6 +522,8 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                       ),
                     ),
                     const SizedBox(width: 32),
+
+                    // 카메라 버튼 (공동 작업자 코드 스타일 유지)
                     GestureDetector(
                       onTap: _isShooting ? null : _launchInAppCamera,
                       child: Container(
@@ -563,7 +560,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
   }
 }
 
-// ── FrameOptionCard (기존과 동일) ────────────────────────────────────────────
+// ── FrameOptionCard (공동 작업자 코드 + 내 코드 다크모드 유지) ────────────────
 class FrameOptionCard extends StatelessWidget {
   final FrameType frameType;
   final bool isSelected;

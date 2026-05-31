@@ -7,18 +7,18 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../core/constants.dart';
-import 'result_screen.dart';
+import 'cut_selection_screen.dart';
 
 class PoseCameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-  final FrameType selectedFrame; // 💡 어떤 프레임인지 알아야 몇 장 찍을지 결정
-  final String? overlayFrame; // 💡 선택된 프레임의 오버레이 이미지 경로 (선택 사항)
+  final FrameType selectedFrame;
+  final String? overlayFrame; // 커스텀 프레임 경로 (없으면 null)
 
   const PoseCameraScreen({
     super.key,
     required this.cameras,
     required this.selectedFrame,
-    this.overlayFrame, // 💡 선택된 프레임의 오버레이 이미지 경로 (선택 사항)
+    this.overlayFrame,
   });
 
   @override
@@ -37,8 +37,8 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   );
 
   bool _isCameraInitialized = false;
-  bool _isProcessing = false; // 얼굴 인식 처리 중 중복 방지
-  bool _isCapturing = false;  // 셔터 누름 중복 방지
+  bool _isProcessing = false;
+  bool _isCapturing = false;
 
   // 얼굴 인식 상태
   int _detectedFaceCount = 0;
@@ -46,10 +46,15 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   String _currentPoseImagePath = '';
   Timer? _hideImageTimer;
 
-  // 💡 촬영 결과 누적 리스트 (ResultScreen에 전달)
+  // 촬영 결과 누적 (CutSelectionScreen에 전달)
   final List<XFile> _capturedPhotos = [];
 
-  // 셔터 버튼 애니메이션 컨트롤러
+  /// 프레임 필요 장수보다 여유분을 더 찍어 컷 선택의 여지를 둔다.
+  /// (공동 작업자 코드 채택)
+  static const int _extraShots = 2;
+  int get _captureTarget => widget.selectedFrame.photoCount + _extraShots;
+
+  // 셔터 버튼 애니메이션
   late AnimationController _shutterAnimController;
 
   @override
@@ -64,9 +69,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     _initializeCamera();
   }
 
-  // ──────────────────────────────────────────────
-  // 카메라 초기화
-  // ──────────────────────────────────────────────
+  // ── 카메라 초기화 ──────────────────────────────────────────────────────
   Future<void> _initializeCamera() async {
     final frontCamera = widget.cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.front,
@@ -86,16 +89,11 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     if (!mounted) return;
 
     setState(() => _isCameraInitialized = true);
-
-    // 실시간 얼굴 인식 스트림 시작
     _cameraController.startImageStream(_processCameraImage);
   }
 
-  // ──────────────────────────────────────────────
-  // 실시간 얼굴 감지 (스트림 프레임마다 호출)
-  // ──────────────────────────────────────────────
+  // ── 실시간 얼굴 감지 ───────────────────────────────────────────────────
   Future<void> _processCameraImage(CameraImage image) async {
-    // 촬영 중이거나 이미 분석 중이면 건너뜀
     if (_isProcessing || _isCapturing) return;
     _isProcessing = true;
 
@@ -109,7 +107,6 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       if (!mounted) return;
 
       if (count > 0 && count != _detectedFaceCount) {
-        // 인원수가 바뀌었을 때만 포즈 추천 갱신
         setState(() => _detectedFaceCount = count);
         _triggerPoseRecommendation(count);
       } else if (count == 0 && _detectedFaceCount != 0) {
@@ -122,68 +119,56 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     }
   }
 
-  // ──────────────────────────────────────────────
-  // 포즈 추천 이미지 오버레이 트리거
-  // ──────────────────────────────────────────────
+  // ── 포즈 추천 이미지 오버레이 ─────────────────────────────────────────
   void _triggerPoseRecommendation(int count) {
-    final int clamped = count.clamp(1, 4); // 최대 4인 포즈까지만 준비
+    final int clamped = count.clamp(1, 4);
     setState(() {
       _currentPoseImagePath = 'assets/poses/${clamped}_person.png';
       _showPoseImage = true;
     });
 
     _hideImageTimer?.cancel();
-    // 💡 3초 뒤 포즈 이미지 사라짐
     _hideImageTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _showPoseImage = false);
     });
   }
 
-  // ──────────────────────────────────────────────
-  // 셔터: 사진 한 장 촬영
-  // ──────────────────────────────────────────────
+  // ── 셔터: 사진 한 장 촬영 ─────────────────────────────────────────────
   Future<void> _capturePhoto() async {
     if (_isCapturing || !_isCameraInitialized) return;
 
     setState(() => _isCapturing = true);
-
-    // 셔터 버튼 눌림 애니메이션
     _shutterAnimController.reverse().then((_) => _shutterAnimController.forward());
 
     try {
-      // 얼굴 인식 스트림을 잠시 멈추고 촬영 (동시 사용 불가)
       await _cameraController.stopImageStream();
       final XFile photo = await _cameraController.takePicture();
-
       _capturedPhotos.add(photo);
 
-      final int needed = widget.selectedFrame.photoCount;
-
-      if (_capturedPhotos.length >= needed) {
-        // 💡 필요한 장수를 다 찍었으면 ResultScreen으로 이동
+      if (_capturedPhotos.length >= _captureTarget) {
+        // 목표 장수 도달 → overlayFrame을 포함해 CutSelectionScreen으로 이동
         if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => ResultScreen(
+              builder: (_) => CutSelectionScreen(
                 selectedFrame: widget.selectedFrame,
                 photos: _capturedPhotos,
-                overlayFrame: widget.overlayFrame, // 💡 프레임 선택 시 오버레이 이미지 전달
+                overlayFrame: widget.overlayFrame, // ← 커스텀 프레임 전달
               ),
             ),
           );
         }
-        return; // dispose에서 정리하므로 스트림 재시작 불필요
+        return;
       }
 
       // 아직 더 찍어야 하면 스트림 재시작
       if (mounted && _cameraController.value.isInitialized) {
-        setState(() {}); // 썸네일 갱신
+        setState(() {});
         await _cameraController.startImageStream(_processCameraImage);
       }
     } catch (e) {
       debugPrint('촬영 오류: $e');
-      // 오류 시 스트림 복구 시도
       if (mounted &&
           _cameraController.value.isInitialized &&
           !_cameraController.value.isStreamingImages) {
@@ -206,9 +191,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     super.dispose();
   }
 
-  // ──────────────────────────────────────────────
-  // UI
-  // ──────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     if (!_isCameraInitialized) {
@@ -220,7 +203,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       );
     }
 
-    final int totalCount = widget.selectedFrame.photoCount;
+    final int totalCount = _captureTarget;
     final int takenCount = _capturedPhotos.length;
 
     return Scaffold(
@@ -228,10 +211,10 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 1. 카메라 프리뷰 ──────────────────────────
+          // 1. 카메라 프리뷰
           CameraPreview(_cameraController),
 
-          // ── 2. 포즈 추천 오버레이 (fade in/out) ───────
+          // 2. 포즈 추천 오버레이
           AnimatedOpacity(
             opacity: _showPoseImage ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 400),
@@ -248,7 +231,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                         color: Colors.black.withOpacity(0.55),
                         blurRadius: 20,
                         spreadRadius: 4,
-                      )
+                      ),
                     ],
                   ),
                   child: ClipRRect(
@@ -257,7 +240,6 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                         ? Image.asset(
                             _currentPoseImagePath,
                             fit: BoxFit.cover,
-                            // 💡 해당 에셋이 없을 때 폴백 UI
                             errorBuilder: (_, __, ___) => Container(
                               color: Colors.black54,
                               child: Column(
@@ -282,26 +264,20 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
             ),
           ),
 
-          // ── 3. 상단 바 (얼굴 수 + 진행 도트 + 닫기) ──
+          // 3. 상단 바 (얼굴 수 + 진행 도트 + 닫기)
           SafeArea(
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 얼굴 인식 배지
                   _FaceBadge(count: _detectedFaceCount),
-
-                  // 촬영 진행 도트
                   _ProgressDots(taken: takenCount, total: totalCount),
-
-                  // 닫기
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.black45,
                         shape: BoxShape.circle,
                       ),
@@ -314,7 +290,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
             ),
           ),
 
-          // ── 4. 하단 (촬영 썸네일 + 카운트 + 셔터) ────
+          // 4. 하단 (썸네일 + 카운트 + 안내 + 셔터)
           Align(
             alignment: Alignment.bottomCenter,
             child: SafeArea(
@@ -323,7 +299,6 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 찍은 사진 썸네일 미니 리스트
                     if (_capturedPhotos.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
@@ -339,7 +314,6 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                         ),
                       ),
 
-                    // "n / total" 텍스트
                     Text(
                       '$takenCount / $totalCount',
                       style: const TextStyle(
@@ -349,9 +323,18 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                         shadows: [Shadow(color: Colors.black, blurRadius: 4)],
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    // 안내 텍스트 (공동 작업자 코드 채택)
+                    Text(
+                      '여러 장 찍고 마음에 드는 ${widget.selectedFrame.photoCount}컷을 고르세요',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                      ),
+                    ),
                     const SizedBox(height: 20),
 
-                    // 셔터 버튼
                     ScaleTransition(
                       scale: _shutterAnimController,
                       child: GestureDetector(
@@ -361,20 +344,17 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                           height: 80,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _isCapturing
-                                ? Colors.white38
-                                : Colors.white,
+                            color: _isCapturing ? Colors.white38 : Colors.white,
                             border: Border.all(
                               color: AppColors.primary,
                               width: 5,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    AppColors.primary.withOpacity(0.4),
+                                color: AppColors.primary.withOpacity(0.4),
                                 blurRadius: 16,
                                 spreadRadius: 2,
-                              )
+                              ),
                             ],
                           ),
                           child: _isCapturing
@@ -400,9 +380,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     );
   }
 
-  // ──────────────────────────────────────────────
-  // ML Kit 입력 이미지 변환 유틸리티
-  // ──────────────────────────────────────────────
+  // ── ML Kit 입력 이미지 변환 ────────────────────────────────────────────
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     final camera = widget.cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.front,
@@ -411,30 +389,22 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
 
     InputImageRotation? rotation;
     if (Platform.isIOS) {
-      rotation = InputImageRotationValue.fromRawValue(
-          camera.sensorOrientation);
+      rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     } else if (Platform.isAndroid) {
-      rotation = InputImageRotationValue.fromRawValue(
-          camera.sensorOrientation);
+      rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     }
     if (rotation == null) return null;
 
-    final format =
-        InputImageFormatValue.fromRawValue(image.format.raw);
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
-    if (Platform.isAndroid && format != InputImageFormat.nv21) {
-      return null;
-    }
-    if (Platform.isIOS && format != InputImageFormat.bgra8888) {
-      return null;
-    }
+    if (Platform.isAndroid && format != InputImageFormat.nv21) return null;
+    if (Platform.isIOS && format != InputImageFormat.bgra8888) return null;
     if (image.planes.isEmpty) return null;
 
     return InputImage.fromBytes(
       bytes: image.planes[0].bytes,
       metadata: InputImageMetadata(
-        size: Size(
-            image.width.toDouble(), image.height.toDouble()),
+        size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
         format: format,
         bytesPerRow: image.planes[0].bytesPerRow,
@@ -443,11 +413,8 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   }
 }
 
-// ──────────────────────────────────────────────────────────
-// 서브 위젯들 (파일 분리 없이 같은 파일에 두는 게 편합니다)
-// ──────────────────────────────────────────────────────────
+// ── 서브 위젯 ─────────────────────────────────────────────────────────────
 
-/// 얼굴 인식 배지
 class _FaceBadge extends StatelessWidget {
   final int count;
   const _FaceBadge({required this.count});
@@ -455,8 +422,7 @@ class _FaceBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.black54,
         borderRadius: BorderRadius.circular(20),
@@ -468,8 +434,7 @@ class _FaceBadge extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             count == 0 ? '인식 중...' : '$count명 인식',
-            style:
-                const TextStyle(color: Colors.white, fontSize: 13),
+            style: const TextStyle(color: Colors.white, fontSize: 13),
           ),
         ],
       ),
@@ -477,7 +442,6 @@ class _FaceBadge extends StatelessWidget {
   }
 }
 
-/// 촬영 진행 도트 인디케이터
 class _ProgressDots extends StatelessWidget {
   final int taken;
   final int total;
@@ -496,8 +460,7 @@ class _ProgressDots extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 3),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(5),
-            color:
-                filled ? AppColors.primary : Colors.white38,
+            color: filled ? AppColors.primary : Colors.white38,
           ),
         );
       }),
@@ -505,7 +468,6 @@ class _ProgressDots extends StatelessWidget {
   }
 }
 
-/// 촬영된 사진 썸네일
 class _CapturedThumb extends StatelessWidget {
   final String path;
   const _CapturedThumb({required this.path});
@@ -520,9 +482,7 @@ class _CapturedThumb extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.primary, width: 2),
         boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 6)
+          BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6),
         ],
       ),
       child: ClipRRect(
@@ -533,7 +493,6 @@ class _CapturedThumb extends StatelessWidget {
   }
 }
 
-/// 빈 슬롯 (아직 안 찍은 자리)
 class _EmptyThumb extends StatelessWidget {
   final int index;
   const _EmptyThumb({required this.index});
