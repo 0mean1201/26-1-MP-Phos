@@ -1,6 +1,7 @@
 // lib/screens/pose_camera_screen.dart
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -9,9 +10,30 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../core/constants.dart';
 import 'result_screen.dart';
 
+// ──────────────────────────────────────────────
+// 폴더 구조
+//   assets/poses/active/1_person/ ~ 4_person/  각 1.png~5.png
+//   assets/poses/basic/1_person/  ~ 4_person/  각 1.png~5.png
+//   assets/poses/couple/                        1.png~5.png
+// ──────────────────────────────────────────────
+
+enum PoseCategory {
+  active('활동적', 'active', Icons.directions_run,          Color(0xFFFF6B6B), '역동적이고 활발한 포즈'),
+  couple('연인',   'couple', Icons.favorite,                Color(0xFFFF9DC6), '다정하고 사랑스러운 포즈'),
+  basic ('무난',   'basic',  Icons.sentiment_satisfied_alt, Color(0xFF74B9FF), '편안하고 자연스러운 포즈'),
+  random('무작위', 'random', Icons.shuffle,                 Color(0xFF9D72FF), '모든 카테고리에서 랜덤 선택');
+
+  final String label;
+  final String folder;
+  final IconData icon;
+  final Color color;
+  final String description;
+  const PoseCategory(this.label, this.folder, this.icon, this.color, this.description);
+}
+
 class PoseCameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
-  final FrameType selectedFrame; // 💡 어떤 프레임인지 알아야 몇 장 찍을지 결정
+  final FrameType selectedFrame;
 
   const PoseCameraScreen({
     super.key,
@@ -25,40 +47,54 @@ class PoseCameraScreen extends StatefulWidget {
 
 class _PoseCameraScreenState extends State<PoseCameraScreen>
     with TickerProviderStateMixin {
+
+  // ── 카메라 ──────────────────────────────────
   late CameraController _cameraController;
-  final FaceDetector _faceDetector = FaceDetector(
-    options: FaceDetectorOptions(
-      enableContours: false,
-      enableLandmarks: false,
-      performanceMode: FaceDetectorMode.fast,
-    ),
-  );
-
   bool _isCameraInitialized = false;
-  bool _isProcessing = false; // 얼굴 인식 처리 중 중복 방지
-  bool _isCapturing = false;  // 셔터 누름 중복 방지
+  bool _isCapturing = false;
 
-  // 얼굴 인식 상태
+  // ── 얼굴 인식 ────────────────────────────────
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(performanceMode: FaceDetectorMode.fast),
+  );
+  bool _isProcessing = false;
   int _detectedFaceCount = 0;
-  bool _showPoseImage = false;
-  String _currentPoseImagePath = '';
-  Timer? _hideImageTimer;
 
-  // 💡 촬영 결과 누적 리스트 (ResultScreen에 전달)
+  // ── 포즈 추천 ────────────────────────────────
+  final Random _random = Random();
+  static const int _imagesPerFolder = 5; // 각 폴더 이미지 수
+
+  PoseCategory? _selectedCategory;   // 유저가 고른 카테고리
+  String?       _currentFolderPath;  // 현재 이미지 폴더 (변환 시 재사용)
+  String?       _currentPoseImagePath;
+  int           _currentImageIndex = -1;
+  bool          _showPoseOverlay   = false;
+
+  // ── 촬영 결과 ────────────────────────────────
   final List<XFile> _capturedPhotos = [];
 
-  // 셔터 버튼 애니메이션 컨트롤러
-  late AnimationController _shutterAnimController;
+  // ── 애니메이션 ───────────────────────────────
+  late AnimationController _shutterAnim;
+  late AnimationController _poseAnim;
+  late Animation<double>   _poseScaleAnim;
+  late Animation<double>   _poseFadeAnim;
 
   @override
   void initState() {
     super.initState();
-    _shutterAnimController = AnimationController(
+    _shutterAnim = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 120),
-      lowerBound: 0.85,
-      upperBound: 1.0,
+      lowerBound: 0.85, upperBound: 1.0,
     )..value = 1.0;
+
+    _poseAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+    );
+    _poseScaleAnim = CurvedAnimation(parent: _poseAnim, curve: Curves.easeOutBack);
+    _poseFadeAnim  = CurvedAnimation(parent: _poseAnim, curve: Curves.easeIn);
+
     _initializeCamera();
   }
 
@@ -70,95 +106,126 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       (c) => c.lensDirection == CameraLensDirection.front,
       orElse: () => widget.cameras.first,
     );
-
     _cameraController = CameraController(
-      frontCamera,
-      ResolutionPreset.high,
+      frontCamera, ResolutionPreset.high,
       enableAudio: false,
       imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
-
     await _cameraController.initialize();
     if (!mounted) return;
-
     setState(() => _isCameraInitialized = true);
-
-    // 실시간 얼굴 인식 스트림 시작
     _cameraController.startImageStream(_processCameraImage);
   }
 
   // ──────────────────────────────────────────────
-  // 실시간 얼굴 감지 (스트림 프레임마다 호출)
+  // 얼굴 인식 (인원수 배지 전용)
   // ──────────────────────────────────────────────
   Future<void> _processCameraImage(CameraImage image) async {
-    // 촬영 중이거나 이미 분석 중이면 건너뜀
     if (_isProcessing || _isCapturing) return;
     _isProcessing = true;
-
     try {
       final inputImage = _inputImageFromCameraImage(image);
       if (inputImage == null) return;
-
-      final List<Face> faces = await _faceDetector.processImage(inputImage);
-      final int count = faces.length;
-
-      if (!mounted) return;
-
-      if (count > 0 && count != _detectedFaceCount) {
-        // 인원수가 바뀌었을 때만 포즈 추천 갱신
+      final faces = await _faceDetector.processImage(inputImage);
+      final count = faces.length;
+      if (mounted && count != _detectedFaceCount) {
         setState(() => _detectedFaceCount = count);
-        _triggerPoseRecommendation(count);
-      } else if (count == 0 && _detectedFaceCount != 0) {
-        setState(() => _detectedFaceCount = 0);
       }
-    } catch (e) {
-      debugPrint('얼굴 인식 오류: $e');
+    } catch (_) {
     } finally {
       _isProcessing = false;
     }
   }
 
   // ──────────────────────────────────────────────
-  // 포즈 추천 이미지 오버레이 트리거
+  // 포즈 시트 열기
   // ──────────────────────────────────────────────
-  void _triggerPoseRecommendation(int count) {
-    final int clamped = count.clamp(1, 4); // 최대 4인 포즈까지만 준비
-    setState(() {
-      _currentPoseImagePath = 'assets/poses/${clamped}_person.png';
-      _showPoseImage = true;
-    });
-
-    _hideImageTimer?.cancel();
-    // 💡 3초 뒤 포즈 이미지 사라짐
-    _hideImageTimer = Timer(const Duration(seconds: 3), () {
-      if (mounted) setState(() => _showPoseImage = false);
-    });
+  void _openPoseSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _PoseCategorySheet(onSelected: _applyCategory),
+    );
   }
 
   // ──────────────────────────────────────────────
-  // 셔터: 사진 한 장 촬영
+  // 카테고리 선택 → 폴더 결정 → 이미지 표시
+  // ──────────────────────────────────────────────
+  void _applyCategory(PoseCategory category) {
+    Navigator.pop(context); // 시트 닫기
+
+    // random이면 실제 카테고리를 먼저 결정
+    PoseCategory actual = category;
+    if (category == PoseCategory.random) {
+      final pool = [PoseCategory.active, PoseCategory.couple, PoseCategory.basic];
+      actual = pool[_random.nextInt(pool.length)];
+    }
+
+    // 폴더 경로 결정
+    final String folderPath;
+    if (actual == PoseCategory.couple) {
+      // couple: 서브폴더 없음
+      folderPath = 'assets/poses/couple';
+    } else {
+      // active / basic: 현재 인식된 인원수로 서브폴더 결정
+      final int personCount = _detectedFaceCount.clamp(1, 4);
+      folderPath = 'assets/poses/${actual.folder}/${personCount}_person';
+    }
+
+    final int index = _random.nextInt(_imagesPerFolder) + 1;
+    debugPrint('=== POSE PATH: $folderPath/$index.png ===');
+
+    setState(() {
+      _selectedCategory     = category;
+      _currentFolderPath    = folderPath;   // 변환 버튼에서 재사용
+      _currentImageIndex    = index;
+      _currentPoseImagePath = '$folderPath/$index.png';
+      _showPoseOverlay      = true;
+    });
+
+    _poseAnim.reset();
+    _poseAnim.forward();
+  }
+
+  // ──────────────────────────────────────────────
+  // 변환 버튼 → 같은 폴더에서 다른 이미지
+  // ──────────────────────────────────────────────
+  void _changeImage() {
+    if (_currentFolderPath == null) return;
+
+    // 같은 인덱스가 나오지 않을 때까지 반복
+    int newIndex;
+    do {
+      newIndex = _random.nextInt(_imagesPerFolder) + 1;
+    } while (newIndex == _currentImageIndex);
+
+    debugPrint('=== CHANGE PATH: $_currentFolderPath/$newIndex.png ===');
+
+    _poseAnim.reset();
+    setState(() {
+      _currentImageIndex    = newIndex;
+      _currentPoseImagePath = '$_currentFolderPath/$newIndex.png';
+    });
+    _poseAnim.forward();
+  }
+
+  // ──────────────────────────────────────────────
+  // 셔터 촬영
   // ──────────────────────────────────────────────
   Future<void> _capturePhoto() async {
     if (_isCapturing || !_isCameraInitialized) return;
-
     setState(() => _isCapturing = true);
-
-    // 셔터 버튼 눌림 애니메이션
-    _shutterAnimController.reverse().then((_) => _shutterAnimController.forward());
+    _shutterAnim.reverse().then((_) => _shutterAnim.forward());
 
     try {
-      // 얼굴 인식 스트림을 잠시 멈추고 촬영 (동시 사용 불가)
       await _cameraController.stopImageStream();
-      final XFile photo = await _cameraController.takePicture();
-
+      final photo = await _cameraController.takePicture();
       _capturedPhotos.add(photo);
 
-      final int needed = widget.selectedFrame.photoCount;
-
-      if (_capturedPhotos.length >= needed) {
-        // 💡 필요한 장수를 다 찍었으면 ResultScreen으로 이동
+      if (_capturedPhotos.length >= widget.selectedFrame.photoCount) {
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -170,17 +237,15 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
             ),
           );
         }
-        return; // dispose에서 정리하므로 스트림 재시작 불필요
+        return;
       }
 
-      // 아직 더 찍어야 하면 스트림 재시작
       if (mounted && _cameraController.value.isInitialized) {
-        setState(() {}); // 썸네일 갱신
+        setState(() {});
         await _cameraController.startImageStream(_processCameraImage);
       }
     } catch (e) {
       debugPrint('촬영 오류: $e');
-      // 오류 시 스트림 복구 시도
       if (mounted &&
           _cameraController.value.isInitialized &&
           !_cameraController.value.isStreamingImages) {
@@ -193,8 +258,8 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
 
   @override
   void dispose() {
-    _hideImageTimer?.cancel();
-    _shutterAnimController.dispose();
+    _shutterAnim.dispose();
+    _poseAnim.dispose();
     if (_cameraController.value.isStreamingImages) {
       _cameraController.stopImageStream();
     }
@@ -204,192 +269,145 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   }
 
   // ──────────────────────────────────────────────
-  // UI
+  // BUILD
   // ──────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     if (!_isCameraInitialized) {
       return const Scaffold(
         backgroundColor: Colors.black,
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
 
-    final int totalCount = widget.selectedFrame.photoCount;
-    final int takenCount = _capturedPhotos.length;
+    final int total          = widget.selectedFrame.photoCount;
+    final int taken          = _capturedPhotos.length;
+    final bool showChangeBtn = _selectedCategory != null && _showPoseOverlay;
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 1. 카메라 프리뷰 ──────────────────────────
           CameraPreview(_cameraController),
+          if (_showPoseOverlay && _currentPoseImagePath != null)
+            _buildPoseOverlay(),
+          SafeArea(child: _buildTopBar(taken, total)),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SafeArea(child: _buildBottomBar(taken, total, showChangeBtn)),
+          ),
+        ],
+      ),
+    );
+  }
 
-          // ── 2. 포즈 추천 오버레이 (fade in/out) ───────
-          AnimatedOpacity(
-            opacity: _showPoseImage ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 400),
-            child: IgnorePointer(
-              child: Align(
-                alignment: const Alignment(0, -0.15),
-                child: Container(
-                  width: 230,
-                  height: 320,
+  // ── 포즈 오버레이 ─────────────────────────────
+  Widget _buildPoseOverlay() {
+    return Positioned(
+      top: 100, left: 0, right: 0,
+      child: Center(
+        child: FadeTransition(
+          opacity: _poseFadeAnim,
+          child: ScaleTransition(
+            scale: _poseScaleAnim,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 190, height: 270,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
                     boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.55),
-                        blurRadius: 20,
-                        spreadRadius: 4,
-                      )
+                      BoxShadow(color: Colors.black.withOpacity(0.6), blurRadius: 24, spreadRadius: 4),
                     ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: _showPoseImage
-                        ? Image.asset(
-                            _currentPoseImagePath,
-                            fit: BoxFit.cover,
-                            // 💡 해당 에셋이 없을 때 폴백 UI
-                            errorBuilder: (_, __, ___) => Container(
-                              color: Colors.black54,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.emoji_people,
-                                      color: Colors.white70, size: 56),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '$_detectedFaceCount인 포즈',
-                                    style: const TextStyle(
-                                        color: Colors.white70, fontSize: 14),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ── 3. 상단 바 (얼굴 수 + 진행 도트 + 닫기) ──
-          SafeArea(
-            child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // 얼굴 인식 배지
-                  _FaceBadge(count: _detectedFaceCount),
-
-                  // 촬영 진행 도트
-                  _ProgressDots(taken: takenCount, total: totalCount),
-
-                  // 닫기
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.black45,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.close,
-                          color: Colors.white, size: 22),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── 4. 하단 (촬영 썸네일 + 카운트 + 셔터) ────
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 찍은 사진 썸네일 미니 리스트
-                    if (_capturedPhotos.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Row(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset(
+                      _currentPoseImagePath!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.black54,
+                        child: const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          children: List.generate(totalCount, (i) {
-                            if (i < _capturedPhotos.length) {
-                              return _CapturedThumb(
-                                  path: _capturedPhotos[i].path);
-                            }
-                            return _EmptyThumb(index: i + 1);
-                          }),
-                        ),
-                      ),
-
-                    // "n / total" 텍스트
-                    Text(
-                      '$takenCount / $totalCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        shadows: [Shadow(color: Colors.black, blurRadius: 4)],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // 셔터 버튼
-                    ScaleTransition(
-                      scale: _shutterAnimController,
-                      child: GestureDetector(
-                        onTap: _isCapturing ? null : _capturePhoto,
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _isCapturing
-                                ? Colors.white38
-                                : Colors.white,
-                            border: Border.all(
-                              color: AppColors.primary,
-                              width: 5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color:
-                                    AppColors.primary.withOpacity(0.4),
-                                blurRadius: 16,
-                                spreadRadius: 2,
-                              )
-                            ],
-                          ),
-                          child: _isCapturing
-                              ? const Padding(
-                                  padding: EdgeInsets.all(22),
-                                  child: CircularProgressIndicator(
-                                    color: AppColors.primary,
-                                    strokeWidth: 3,
-                                  ),
-                                )
-                              : const Icon(Icons.camera_alt,
-                                  color: AppColors.primary, size: 34),
+                          children: [
+                            Icon(Icons.image_not_supported, color: Colors.white54, size: 36),
+                            SizedBox(height: 8),
+                            Text('이미지 없음', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                          ],
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+                // 닫기 버튼
+                Positioned(
+                  top: -8, right: -8,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _showPoseOverlay = false),
+                    child: Container(
+                      width: 26, height: 26,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white38),
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 14),
+                    ),
+                  ),
+                ),
+                // 카테고리 배지
+                if (_selectedCategory != null)
+                  Positioned(
+                    bottom: -12, left: 0, right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: _selectedCategory!.color,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6)],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(_selectedCategory!.icon, color: Colors.white, size: 12),
+                            const SizedBox(width: 4),
+                            Text(
+                              _selectedCategory == PoseCategory.couple
+                                  ? _selectedCategory!.label
+                                  : '${_selectedCategory!.label} · $_detectedFaceCount명',
+                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── 상단 바 ─────────────────────────────────
+  Widget _buildTopBar(int taken, int total) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _FaceBadge(count: _detectedFaceCount),
+          _ProgressDots(taken: taken, total: total),
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+              child: const Icon(Icons.close, color: Colors.white, size: 22),
             ),
           ),
         ],
@@ -397,41 +415,115 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
     );
   }
 
+  // ── 하단 바 ─────────────────────────────────
+  Widget _buildBottomBar(int taken, int total, bool showChangeBtn) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_capturedPhotos.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(total, (i) => i < taken
+                    ? _CapturedThumb(path: _capturedPhotos[i].path)
+                    : _EmptyThumb(index: i + 1)),
+              ),
+            ),
+          Text(
+            '$taken / $total',
+            style: const TextStyle(
+              color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600,
+              shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // 변환 버튼
+              SizedBox(
+                width: 90,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  transitionBuilder: (child, anim) => FadeTransition(
+                    opacity: anim,
+                    child: ScaleTransition(scale: anim, child: child),
+                  ),
+                  child: showChangeBtn
+                      ? _ChangeButton(key: const ValueKey('change'), onTap: _changeImage)
+                      : const SizedBox.shrink(key: ValueKey('empty')),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // 셔터
+              ScaleTransition(
+                scale: _shutterAnim,
+                child: GestureDetector(
+                  onTap: _isCapturing ? null : _capturePhoto,
+                  child: Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isCapturing ? Colors.white38 : Colors.white,
+                      border: Border.all(color: AppColors.primary, width: 5),
+                      boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.45), blurRadius: 18, spreadRadius: 2)],
+                    ),
+                    child: _isCapturing
+                        ? const Padding(
+                            padding: EdgeInsets.all(22),
+                            child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 3),
+                          )
+                        : const Icon(Icons.camera_alt, color: AppColors.primary, size: 34),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // 포즈 추천 버튼
+              SizedBox(
+                width: 90,
+                child: _PoseButton(
+                  isActive: _selectedCategory != null && _showPoseOverlay,
+                  category: _selectedCategory,
+                  onTap: _openPoseSheet,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   // ──────────────────────────────────────────────
-  // ML Kit 입력 이미지 변환 유틸리티
+  // ML Kit InputImage 변환
   // ──────────────────────────────────────────────
   InputImage? _inputImageFromCameraImage(CameraImage image) {
     final camera = widget.cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.front,
       orElse: () => widget.cameras.first,
     );
-
     InputImageRotation? rotation;
     if (Platform.isIOS) {
-      rotation = InputImageRotationValue.fromRawValue(
-          camera.sensorOrientation);
+      rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     } else if (Platform.isAndroid) {
-      rotation = InputImageRotationValue.fromRawValue(
-          camera.sensorOrientation);
+      rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     }
     if (rotation == null) return null;
 
-    final format =
-        InputImageFormatValue.fromRawValue(image.format.raw);
+    final format = InputImageFormatValue.fromRawValue(image.format.raw);
     if (format == null) return null;
-    if (Platform.isAndroid && format != InputImageFormat.nv21) {
-      return null;
-    }
-    if (Platform.isIOS && format != InputImageFormat.bgra8888) {
-      return null;
-    }
+    if (Platform.isAndroid && format != InputImageFormat.nv21) return null;
+    if (Platform.isIOS && format != InputImageFormat.bgra8888) return null;
     if (image.planes.isEmpty) return null;
 
     return InputImage.fromBytes(
       bytes: image.planes[0].bytes,
       metadata: InputImageMetadata(
-        size: Size(
-            image.width.toDouble(), image.height.toDouble()),
+        size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
         format: format,
         bytesPerRow: image.planes[0].bytesPerRow,
@@ -440,33 +532,48 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   }
 }
 
-// ──────────────────────────────────────────────────────────
-// 서브 위젯들 (파일 분리 없이 같은 파일에 두는 게 편합니다)
-// ──────────────────────────────────────────────────────────
-
-/// 얼굴 인식 배지
-class _FaceBadge extends StatelessWidget {
-  final int count;
-  const _FaceBadge({required this.count});
+// ══════════════════════════════════════════════════════════════
+// 포즈 카테고리 선택 바텀시트
+// ══════════════════════════════════════════════════════════════
+class _PoseCategorySheet extends StatelessWidget {
+  final void Function(PoseCategory) onSelected;
+  const _PoseCategorySheet({required this.onSelected});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(20),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 36),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.face, color: Colors.white, size: 15),
-          const SizedBox(width: 5),
-          Text(
-            count == 0 ? '인식 중...' : '$count명 인식',
-            style:
-                const TextStyle(color: Colors.white, fontSize: 13),
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+            ),
+          ),
+          const SizedBox(height: 22),
+          const Text('어떤 포즈로 찍을까요?',
+              style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 5),
+          Text('카테고리를 선택하면 인원수에 맞는 포즈를 추천해드려요',
+              style: TextStyle(fontSize: 13, color: Colors.grey[500])),
+          const SizedBox(height: 22),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 2.4,
+            children: PoseCategory.values
+                .map((c) => _CategoryCard(category: c, onTap: () => onSelected(c)))
+                .toList(),
           ),
         ],
       ),
@@ -474,7 +581,149 @@ class _FaceBadge extends StatelessWidget {
   }
 }
 
-/// 촬영 진행 도트 인디케이터
+class _CategoryCard extends StatelessWidget {
+  final PoseCategory category;
+  final VoidCallback onTap;
+  const _CategoryCard({required this.category, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: category.color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: category.color.withOpacity(0.35), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                  color: category.color.withOpacity(0.18), shape: BoxShape.circle),
+              child: Icon(category.icon, color: category.color, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(category.label,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text(category.description,
+                      style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 서브 위젯
+// ══════════════════════════════════════════════════════════════
+
+class _ChangeButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ChangeButton({super.key, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.18),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: Colors.white60),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.refresh_rounded, color: Colors.white, size: 15),
+            SizedBox(width: 5),
+            Text('변환', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PoseButton extends StatelessWidget {
+  final bool isActive;
+  final PoseCategory? category;
+  final VoidCallback onTap;
+  const _PoseButton({required this.isActive, required this.category, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isActive && category != null
+        ? category!.color
+        : Colors.white.withOpacity(0.18);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: isActive ? Colors.transparent : Colors.white60),
+          boxShadow: isActive
+              ? [BoxShadow(color: color.withOpacity(0.5), blurRadius: 10, spreadRadius: 1)]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isActive && category != null ? category!.icon : Icons.style_rounded,
+              color: Colors.white, size: 15,
+            ),
+            const SizedBox(width: 5),
+            const Text('포즈',
+                style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FaceBadge extends StatelessWidget {
+  final int count;
+  const _FaceBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.face, color: Colors.white, size: 14),
+          const SizedBox(width: 5),
+          Text(
+            count == 0 ? '인식 중...' : '$count명 인식',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProgressDots extends StatelessWidget {
   final int taken;
   final int total;
@@ -488,13 +737,11 @@ class _ProgressDots extends StatelessWidget {
         final filled = i < taken;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 300),
-          width: filled ? 22 : 10,
-          height: 10,
+          width: filled ? 22 : 10, height: 10,
           margin: const EdgeInsets.symmetric(horizontal: 3),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(5),
-            color:
-                filled ? AppColors.primary : Colors.white38,
+            color: filled ? AppColors.primary : Colors.white38,
           ),
         );
       }),
@@ -502,7 +749,6 @@ class _ProgressDots extends StatelessWidget {
   }
 }
 
-/// 촬영된 사진 썸네일
 class _CapturedThumb extends StatelessWidget {
   final String path;
   const _CapturedThumb({required this.path});
@@ -510,17 +756,12 @@ class _CapturedThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 52,
-      height: 52,
+      width: 52, height: 52,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.primary, width: 2),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 6)
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 6)],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(6),
@@ -530,7 +771,6 @@ class _CapturedThumb extends StatelessWidget {
   }
 }
 
-/// 빈 슬롯 (아직 안 찍은 자리)
 class _EmptyThumb extends StatelessWidget {
   final int index;
   const _EmptyThumb({required this.index});
@@ -538,8 +778,7 @@ class _EmptyThumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 52,
-      height: 52,
+      width: 52, height: 52,
       margin: const EdgeInsets.symmetric(horizontal: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -547,13 +786,9 @@ class _EmptyThumb extends StatelessWidget {
         color: Colors.white12,
       ),
       child: Center(
-        child: Text(
-          '$index',
-          style: const TextStyle(
-              color: Colors.white38,
-              fontSize: 16,
-              fontWeight: FontWeight.bold),
-        ),
+        child: Text('$index',
+            style: const TextStyle(
+                color: Colors.white38, fontSize: 16, fontWeight: FontWeight.bold)),
       ),
     );
   }
