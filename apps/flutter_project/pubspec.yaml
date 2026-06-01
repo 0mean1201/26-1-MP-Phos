@@ -20,8 +20,7 @@ dependencies:
   http: ^1.2.1
   camera: ^0.11.0
 
-  google_sign_in: ^6.2.1
-  flutter_secure_storage: ^9.2.2
+  android_id: ^0.3.0
 
   # ML Packages
   google_mlkit_face_detection: ^0.13.2
