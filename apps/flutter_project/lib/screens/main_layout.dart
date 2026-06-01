@@ -4,9 +4,7 @@ import 'home_screen.dart';
 import 'gallery_screen.dart';
 import 'studio_screen.dart';
 import '../core/constants.dart';
-
-/// 앱 전역 테마 상태 관리
-final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+import '../core/app_state.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -16,12 +14,17 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _currentIndex = 0;
+  late final List<Widget> _pages;
 
-  final List<Widget> _pages = [
-    const HomeScreen(),
-    const GalleryScreen(),
-    const StudioScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      HomeScreen(onViewAll: () => setState(() => _currentIndex = 1)),
+      const GalleryScreen(),
+      const StudioScreen(),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {

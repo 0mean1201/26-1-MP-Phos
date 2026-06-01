@@ -9,7 +9,7 @@ class GroupAssignmentResult {
 }
 
 class GroupingService {
-  static const double _threshold = 0.4;
+  static const double _threshold = 0.6;
 
   static final GroupingService _instance = GroupingService._internal();
   factory GroupingService() => _instance;

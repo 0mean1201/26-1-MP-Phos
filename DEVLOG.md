@@ -23,22 +23,25 @@
 ├── apps/
 │   ├── flutter_project/          # Flutter 앱
 │   │   ├── lib/
-│   │   │   ├── core/constants.dart
+│   │   │   ├── core/
+│   │   │   │   ├── constants.dart
+│   │   │   │   └── app_state.dart              ← 신규 (테마 notifier)
 │   │   │   ├── screens/
 │   │   │   │   ├── main_layout.dart
 │   │   │   │   ├── home_screen.dart
 │   │   │   │   ├── frame_selection_screen.dart
+│   │   │   │   ├── pose_camera_screen.dart     ← 신규 (실시간 카메라)
 │   │   │   │   ├── result_screen.dart
 │   │   │   │   ├── gallery_screen.dart
 │   │   │   │   ├── search_result_screen.dart
-│   │   │   │   ├── studio_screen.dart          ← 신규
+│   │   │   │   ├── studio_screen.dart
 │   │   │   │   └── frame_conversion_screen.dart
 │   │   │   └── services/
 │   │   │       ├── face_recognition_service.dart
-│   │   │       ├── grouping_service.dart        ← 신규
-│   │   │       ├── photo_storage_service.dart   ← 신규
-│   │   │       ├── sync_service.dart            ← 신규
-│   │   │       └── api_service.dart             ← 신규
+│   │   │       ├── grouping_service.dart
+│   │   │       ├── photo_storage_service.dart
+│   │   │       ├── sync_service.dart
+│   │   │       └── api_service.dart
 │   │   └── assets/ml/
 │   │       └── facenet_512.tflite
 │   └── server/                   # Express 백엔드
@@ -182,7 +185,19 @@ class LocalPhoto {
 
 ---
 
-### 10. 에뮬레이터 테스트용 갤러리 픽커 추가 (`frame_selection_screen.dart`)
+### 10. PoseCameraScreen 구현 (`pose_camera_screen.dart` 신규)
+
+실시간 카메라 + ML Kit 얼굴 감지 기반 포즈 가이드 화면.
+
+- 이미지 스트림으로 실시간 얼굴 수 감지 (ML Kit FaceDetector)
+- 얼굴 수 변화 시 `assets/poses/{count}_person.png` 포즈 이미지 3초 오버레이 표시
+- 촬영 진행 상황 표시: 프로그레스 닷 + 썸네일 그리드
+- 프레임 타입에 따라 목표 촬영 수 자동 결정, 완료 시 ResultScreen으로 이동
+- 서브위젯: `_FaceBadge`, `_ProgressDots`, `_CapturedThumb`, `_EmptyThumb`
+
+---
+
+### 11. 에뮬레이터 테스트용 갤러리 픽커 추가 (`frame_selection_screen.dart`)
 
 에뮬레이터에서는 카메라로 얼굴 사진을 찍기 어려우므로 갤러리 선택 버튼 추가.
 
@@ -193,7 +208,31 @@ _takePictures(source: ImageSource.gallery)
 
 ---
 
-### 11. 얼굴 인식 정확도 개선 (`face_recognition_service.dart`)
+### 12. 테마 시스템 (`main.dart` / `constants.dart` / `app_state.dart` 신규)
+
+다크/라이트 모드 전환 기능 추가.
+
+- `app_state.dart`: `themeNotifier` (`ValueNotifier<ThemeMode>`) 전역 상태 관리
+- `main.dart`: 앱 시작 시 SharedPreferences `phos_theme` 키에서 저장된 테마 로드
+- `constants.dart` 테마 색상:
+  - **Light**: Primary `#9D72FF`, Background `#FAF9F6`
+  - **Dark**: Primary `#C4A8FF`, Background `#1E1030`
+- AppDrawer 내 토글로 전환, 변경 즉시 `phos_theme`에 저장
+
+---
+
+### 13. AppDrawer 내용 구체화 (`home_screen.dart`)
+
+홈 화면 드로어에 앱 정보/정책 콘텐츠 추가.
+
+- **개인정보처리방침**: 얼굴 이미지는 기기 내에서만 처리, 서버에는 벡터(숫자 배열)만 전송 명시
+- **라이선스**: FaceNet 512, tflite_flutter OSS 라이선스 표시
+- **연락처**: mpphos.support@gmail.com
+- **버전**: v1.0.0
+
+---
+
+### 14. 얼굴 인식 정확도 개선 (`face_recognition_service.dart`)
 
 #### 변경 전 (단순 크롭)
 ```
@@ -236,10 +275,10 @@ return embedding.map((e) => e / norm).toList();
 
 ## 임계값 정리
 
-| 구분 | 이전 | 현재 | 의미 |
+| 구분 | 현재 | 파일 | 의미 |
 |------|------|------|------|
-| 갤러리 얼굴 검색 | 0.3 | **0.2** | 코사인 유사도 0.2 이상이면 동일인 |
-| 그루핑 (새 그룹 생성) | 0.4 | **0.35** | 0.35 미만이면 새 인물로 판단 |
+| 갤러리 얼굴 검색 | **0.6** | `gallery_screen.dart:107` | 코사인 유사도 0.6 이상이면 동일인 |
+| 그루핑 (새 그룹 생성) | **0.6** | `grouping_service.dart:12` | 0.6 미만이면 새 인물로 판단 |
 
 ---
 
@@ -256,7 +295,13 @@ return embedding.map((e) => e / norm).toList();
 
 ## 로컬 개발 환경
 
-### 서버 실행
+### 배포 서버
+```
+https://port-0-phos-mpiml6p754ac32d4.sel3.cloudtype.app
+```
+CloudType으로 배포됨. `api_service.dart:65`의 `baseUrl`이 이 주소를 가리킴.
+
+### 서버 로컬 실행
 ```bash
 cd apps/server
 npm run start     # 또는 ts-node src/index.ts
@@ -280,3 +325,30 @@ flutter emulators --launch Medium_Phone_API_36.1
 # 앱 데이터 삭제 (SharedPreferences 초기화)
 adb shell pm clear com.example.flutter_project
 ```
+
+---
+
+## 추천 기능 (미구현)
+
+### ★★★ 높은 우선순위
+
+| 기능 | 설명 | 관련 파일 |
+|------|------|----------|
+| **사진/그룹 삭제** | 현재 서버에 DELETE 엔드포인트 없음. 갤러리 롱프레스 삭제 + `DELETE /api/photos/:id`, `DELETE /api/groups/:id` 추가 필요 | `gallery_screen.dart`, `server/src/` |
+| **셀프 타이머 촬영** | 포토부스 핵심 기능. 3/5/10초 카운트다운 후 자동 촬영, 연속 촬영 시 반복 | `pose_camera_screen.dart` |
+| **그룹 병합** | 같은 인물이 각도·조명 차이로 다른 그룹에 분류될 때 수동 병합. Studio 화면에서 두 그룹 선택 → 병합 | `studio_screen.dart`, 서버 신규 엔드포인트 |
+
+### ★★ 중간 우선순위
+
+| 기능 | 설명 | 관련 파일 |
+|------|------|----------|
+| **사진 공유** | 결과 화면/갤러리에서 SNS 공유. `share_plus` 패키지로 구현 가능 | `result_screen.dart`, `gallery_screen.dart` |
+| **온보딩 화면** | 첫 실행 시 얼굴 인식·그루핑 기능 소개. `phos_onboarding_done` 키로 한 번만 표시 | `main.dart` |
+| **그룹 대표 이미지 수동 설정** | Studio에서 아바타 탭 → 그룹 내 사진 중 직접 선택. 현재는 서버가 첫 번째 Face 자동 지정 | `studio_screen.dart` |
+
+### ★ 낮은 우선순위
+
+| 기능 | 설명 |
+|------|------|
+| **촬영 통계 화면** | "총 N장, M명과 함께, 가장 많이 찍은 프레임: CLASSIC" — 로컬 데이터만으로 계산 가능 |
+| **프레임 배경 커스터마이즈** | `result_screen.dart`의 TRIO=pink, 나머지=white를 사용자가 직접 선택 |

@@ -28,7 +28,67 @@ class _ResultScreenState extends State<ResultScreen> {
   final GlobalKey _globalKey = GlobalKey();
   bool _isSaving = false;
 
-  Future<void> _saveResultImage() async {
+  /// 저장 버튼 → 제목·태그 입력 다이얼로그를 띄운 뒤 실제 저장 진행
+  Future<void> _onSavePressed() async {
+    final titleController = TextEditingController();
+    final tagController = TextEditingController();
+    final primaryColor = AppColors.primaryOf(context);
+    final textMain = AppColors.textMainOf(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface(context),
+        title: Text('사진 정보 입력',
+            style: TextStyle(color: textMain, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '제목',
+                hintText: 'Untitled',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: tagController,
+              decoration: const InputDecoration(
+                labelText: '태그',
+                hintText: 'my_moment',
+                prefixText: '#',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: primaryColor),
+            child: const Text('저장', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    final title = titleController.text.trim();
+    var tag = tagController.text.trim();
+    if (tag.startsWith('#')) tag = tag.substring(1).trim();
+
+    if (confirmed != true) return;
+    await _saveResultImage(
+      title: title.isEmpty ? 'Untitled' : title,
+      tag: tag.isEmpty ? 'my_moment' : tag,
+    );
+  }
+
+  Future<void> _saveResultImage({required String title, required String tag}) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     try {
@@ -51,22 +111,22 @@ class _ResultScreenState extends State<ResultScreen> {
       // 2. 갤러리에 저장
       await Gal.putImage(file.path);
 
-      // 3. 각 원본 사진에서 얼굴 임베딩 추출
+      // 3. 얼굴 임베딩 추출
       final allEmbeddings = <List<double>>[];
       for (final photo in widget.photos) {
         final embeddings = await FaceRecognitionService().getEmbeddings(photo);
         allEmbeddings.addAll(embeddings);
       }
 
-      // 4. 클라이언트 사이드 그루핑
+      // 4. 그루핑
       final groupingResult = await GroupingService().assignGroups(allEmbeddings);
 
-      // 5. 로컬 저장 (pendingUpload = true, 임베딩은 업로드 전까지만 보관)
+      // 5. 로컬 저장
       final localPhoto = LocalPhoto(
         path: file.path,
         frameType: widget.selectedFrame.name,
-        title: 'Untitled',
-        tag: 'my_moment',
+        title: title,
+        tag: tag,
         date: DateTime.now().toIso8601String(),
         groupIds: groupingResult.groupIds,
         pendingUpload: allEmbeddings.isNotEmpty,
@@ -74,10 +134,8 @@ class _ResultScreenState extends State<ResultScreen> {
       );
       await PhotoStorageService().addPhoto(localPhoto);
 
-      // 6. 백그라운드에서 서버 업로드 시도 (실패해도 무시, 나중에 재시도)
-      if (allEmbeddings.isNotEmpty) {
-        SyncService().enqueuePendingPhotos();
-      }
+      // 6. 서버 업로드 시도
+      if (allEmbeddings.isNotEmpty) SyncService().enqueuePendingPhotos();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -98,52 +156,64 @@ class _ResultScreenState extends State<ResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = AppColors.bg(context);
+    final primaryColor = AppColors.primaryOf(context);
+    final textMain = AppColors.textMainOf(context);
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: isDark ? AppColors.darkSurface : Colors.transparent,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black),
-        title: const Text('Result', style: TextStyle(color: Colors.black)),
+        iconTheme: IconThemeData(color: textMain),
+        title: Text('Result', style: TextStyle(color: textMain, fontWeight: FontWeight.bold)),
       ),
       body: Center(
         child: SingleChildScrollView(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              // 프레임 렌더링 (저장용이므로 항상 흰 배경 유지)
               RepaintBoundary(
                 key: _globalKey,
                 child: _buildRenderedStrip(),
               ),
               const SizedBox(height: 40),
+
+              // 버튼 영역
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: _isSaving ? null : _saveResultImage,
+                    onPressed: _isSaving ? null : _onSavePressed,
                     icon: _isSaving
                         ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                         : const Icon(Icons.download),
                     label: Text(_isSaving ? '저장 중...' : 'Save to Gallery'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
+                      backgroundColor: primaryColor,
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(width: 16),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.popUntil(context, (route) => route.isFirst);
-                    },
-                    icon: const Icon(Icons.home),
-                    label: const Text('Go Home'),
+                    onPressed: () => Navigator.popUntil(context, (route) => route.isFirst),
+                    icon: Icon(Icons.home, color: primaryColor),
+                    label: Text('Go Home', style: TextStyle(color: primaryColor)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: primaryColor),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
                 ],
-              )
+              ),
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -151,12 +221,14 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
+  // 저장되는 이미지는 항상 흰 배경 유지 (인화지 느낌)
   Widget _buildRenderedStrip() {
+    final isTrioFrame = widget.selectedFrame == FrameType.trio;
     return Container(
       width: 220,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: widget.selectedFrame == FrameType.trio ? Colors.pink[100] : Colors.white,
+        color: isTrioFrame ? Colors.pink[100] : Colors.white,
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
       ),
       child: Column(
@@ -167,32 +239,28 @@ class _ResultScreenState extends State<ResultScreen> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
+                crossAxisCount: 2, crossAxisSpacing: 10, mainAxisSpacing: 10),
               itemCount: widget.photos.length,
               itemBuilder: (context, index) =>
                   Image.file(File(widget.photos[index].path), fit: BoxFit.cover),
             )
           else
             Column(
-              children: widget.photos
-                  .map((photo) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: AspectRatio(
-                          aspectRatio: 3 / 2,
-                          child: Image.file(File(photo.path), fit: BoxFit.cover),
-                        ),
-                      ))
-                  .toList(),
+              children: widget.photos.map((photo) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: AspectRatio(
+                  aspectRatio: 3 / 2,
+                  child: Image.file(File(photo.path), fit: BoxFit.cover),
+                ),
+              )).toList(),
             ),
           const SizedBox(height: 10),
-          const Text('pho\'s',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary)),
-          Text(DateTime.now().toString().substring(0, 10),
-              style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          const Text("pho's",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primary)),
+          Text(
+            DateTime.now().toString().substring(0, 10),
+            style: const TextStyle(fontSize: 10, color: Colors.grey),
+          ),
         ],
       ),
     );

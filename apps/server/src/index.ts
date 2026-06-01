@@ -11,6 +11,7 @@ import {
   getRepresentativesHandler,
   getIntimacyHandler,
 } from "./controller";
+import { googleSignInHandler, getUserGroupsHandler } from "./auth.controller";
 
 const app: Express = express();
 const port = process.env.PORT || 3000;
@@ -24,6 +25,9 @@ app.get("/", (_req: Request, res: Response) => {
   res.send("Hello World! This is TypeScript Server!");
 });
 
+
+app.post("/api/auth/google", googleSignInHandler);
+app.get("/api/users/:userId/groups", getUserGroupsHandler);
 
 app.post("/api/app-instances", registerAppInstanceHandler);
 app.post("/api/photos", createPhotoHandler);

@@ -104,7 +104,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
   }
 
   List<SavedPhoto> _findSimilarPhotos(List<double> targetEmbedding) {
-    const double threshold = 0.3;
+    const double threshold = 0.6;
     return _myGallery.where((photo) {
       return photo.embeddings.any((embedding) {
         return GroupingService.cosineSimilarity(targetEmbedding, embedding) > threshold;
@@ -112,23 +112,43 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }).toList();
   }
 
-  Future<void> _updatePhotoTitle(String targetPath, String newTitle) async {
+  Future<void> _updatePhotoMeta(
+      String targetPath, String newTitle, String newTag) async {
     final all = await PhotoStorageService().loadAll();
     final target = all.firstWhere((p) => p.path == targetPath, orElse: () => all.first);
-    await PhotoStorageService().updatePhoto(targetPath, target.copyWith(title: newTitle));
+    await PhotoStorageService()
+        .updatePhoto(targetPath, target.copyWith(title: newTitle, tag: newTag));
     await _loadSavedPhotos();
   }
 
-  void _showEditTitleDialog(SavedPhoto photo) {
-    final editController = TextEditingController(text: photo.title);
+  void _showEditDialog(SavedPhoto photo) {
+    final titleController = TextEditingController(text: photo.title);
+    final tagController = TextEditingController(text: photo.tag);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('사진 이름 수정'),
-        content: TextField(
-          controller: editController,
-          decoration: const InputDecoration(hintText: '새로운 이름을 입력하세요'),
-          autofocus: true,
+        title: const Text('사진 정보 수정'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(
+                labelText: '제목',
+                hintText: '제목을 입력하세요',
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: tagController,
+              decoration: const InputDecoration(
+                labelText: '태그',
+                hintText: '태그를 입력하세요',
+                prefixText: '#',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -137,9 +157,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (editController.text.trim().isNotEmpty) {
-                _updatePhotoTitle(photo.path, editController.text.trim());
-              }
+              final newTitle = titleController.text.trim().isEmpty
+                  ? photo.title
+                  : titleController.text.trim();
+              var newTag = tagController.text.trim();
+              if (newTag.startsWith('#')) newTag = newTag.substring(1).trim();
+              if (newTag.isEmpty) newTag = photo.tag;
+              _updatePhotoMeta(photo.path, newTitle, newTag);
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
@@ -313,7 +337,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                 Positioned(
                                   top: 5, right: 5,
                                   child: GestureDetector(
-                                    onTap: () => _showEditTitleDialog(photo),
+                                    onTap: () => _showEditDialog(photo),
                                     child: Container(
                                       padding: const EdgeInsets.all(6),
                                       decoration: BoxDecoration(
