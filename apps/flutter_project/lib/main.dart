@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/main_layout.dart';
 import 'services/face_recognition_service.dart';
 import 'services/api_service.dart';
+import 'services/auth_service.dart';
 import 'services/sync_service.dart';
 import 'core/constants.dart';
 import 'core/app_state.dart';
@@ -14,6 +15,7 @@ Future<void> main() async {
   await FrameService().initialize(); // ← 추가: 저장된 프레임 불러오기
   await _ensureAppInstance();
   await _loadSavedTheme();
+  await AuthService().init();
   runApp(const PhotoBoothApp());
 }
 

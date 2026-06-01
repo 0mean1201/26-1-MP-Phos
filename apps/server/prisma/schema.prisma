@@ -8,12 +8,25 @@ generator client {
   output   = "../src/generated/client"
 }
 
+// 소셜 로그인 사용자 테이블
+model User {
+  id           Int           @id @default(autoincrement())
+  googleId     String        @unique
+  email        String        @unique
+  name         String
+  picture      String?       @db.Text
+  createdAt    DateTime      @default(now())
+
+  appInstances AppInstance[]
+}
+
 // 기기 고유 ID 테이블
 model AppInstance {
-  // 💡 String에서 Int (자동 증가)로 변경하여 기준을 맞춥니다.
-  id        Int      @id @default(autoincrement()) 
+  id        Int      @id @default(autoincrement())
+  userId    Int?
   createdAt DateTime @default(now())
-  
+
+  user      User?    @relation(fields: [userId], references: [id])
   photos    Photo[]
   groups    Group[]
 }
