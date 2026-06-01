@@ -77,7 +77,7 @@ class FrameService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_prefKey);
     if (saved != null && availableFrames.contains(saved)) {
-      _selectedFrame = 'assets/frames/$saved';
+      _selectedFrame = 'assets/images/$saved';
     }
   }
  
@@ -88,7 +88,7 @@ class FrameService extends ChangeNotifier {
       _selectedFrame = null;
       await prefs.remove(_prefKey);
     } else {
-      _selectedFrame = 'assets/frames/$fileName';
+      _selectedFrame = 'assets/images/$fileName';
       await prefs.setString(_prefKey, fileName);
     }
     notifyListeners();

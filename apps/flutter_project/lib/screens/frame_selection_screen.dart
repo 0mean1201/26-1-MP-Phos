@@ -48,7 +48,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
   // ── 인앱 카메라 (공동 작업자 코드 유지 — PoseCameraScreen 연동) ─────────
   Future<void> _launchInAppCamera() async {
     final String? overlayPath = _pendingOverlayFileName != null
-        ? 'assets/frames/$_pendingOverlayFileName'
+        ? 'assets/images/$_pendingOverlayFileName'
         : null;
     await _frameService.selectFrame(_pendingOverlayFileName);
 
@@ -81,7 +81,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
   // ── 갤러리에서 선택 → CutSelectionScreen으로 연결 ────────────────────
   Future<void> _pickFromGallery() async {
     final String? overlayPath = _pendingOverlayFileName != null
-        ? 'assets/frames/$_pendingOverlayFileName'
+        ? 'assets/images/$_pendingOverlayFileName'
         : null;
     await _frameService.selectFrame(_pendingOverlayFileName);
 
@@ -169,7 +169,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 250),
               child: Image.asset(
-                'assets/frames/$_pendingOverlayFileName',
+                'assets/images/$_pendingOverlayFileName',
                 key: ValueKey(_pendingOverlayFileName),
                 width: 180,
                 height: 250,
@@ -346,7 +346,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                   ClipRRect(
                     borderRadius: BorderRadius.circular(9),
                     child: Image.asset(
-                      'assets/frames/$fileName',
+                      'assets/images/$fileName',
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,

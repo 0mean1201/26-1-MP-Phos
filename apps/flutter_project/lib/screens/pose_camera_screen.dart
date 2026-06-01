@@ -50,11 +50,10 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
   final List<XFile> _capturedPhotos = [];
 
   /// 프레임 필요 장수보다 여유분을 더 찍어 컷 선택의 여지를 둔다.
-  /// (공동 작업자 코드 채택)
   static const int _extraShots = 2;
   int get _captureTarget => widget.selectedFrame.photoCount + _extraShots;
 
-  // 셔터 버튼 애니메이션
+  // 셔터 버튼 애니메이션 컨트롤러
   late AnimationController _shutterAnimController;
 
   @override
@@ -146,7 +145,7 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
       _capturedPhotos.add(photo);
 
       if (_capturedPhotos.length >= _captureTarget) {
-        // 목표 장수 도달 → overlayFrame을 포함해 CutSelectionScreen으로 이동
+        // 목표 장수 도달 → overlayFrame 포함해 CutSelectionScreen으로 이동
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -324,7 +323,6 @@ class _PoseCameraScreenState extends State<PoseCameraScreen>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    // 안내 텍스트 (공동 작업자 코드 채택)
                     Text(
                       '여러 장 찍고 마음에 드는 ${widget.selectedFrame.photoCount}컷을 고르세요',
                       style: const TextStyle(
