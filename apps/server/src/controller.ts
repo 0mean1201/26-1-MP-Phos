@@ -3,9 +3,13 @@ import * as service from "./service";
 import { CreateGroupRequest, UpdateGroupRequest } from "./dto";
 
 // POST /api/app-instances
-export const registerAppInstanceHandler = async (_req: Request, res: Response) => {
+export const registerAppInstanceHandler = async (req: Request, res: Response) => {
   try {
-    const instance = await service.registerAppInstance();
+    const { deviceId } = req.body;
+    if (!deviceId || typeof deviceId !== 'string') {
+      return res.status(400).json({ success: false, message: 'deviceId가 필요합니다.' });
+    }
+    const instance = await service.registerAppInstance(deviceId);
     res.status(201).json({ success: true, data: { appInstanceId: instance.id } });
   } catch (error) {
     res.status(500).json({ success: false, message: "앱 인스턴스 등록 실패" });

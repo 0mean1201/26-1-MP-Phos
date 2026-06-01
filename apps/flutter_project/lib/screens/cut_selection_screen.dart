@@ -6,16 +6,16 @@ import 'package:image_picker/image_picker.dart';
 import '../core/constants.dart';
 import 'result_screen.dart';
 
-/// 촬영이 끝난 뒤, 찍은 컷 중 프레임에 들어갈 사진을 고르고
-/// 순서를 재배치하는 화면.
 class CutSelectionScreen extends StatefulWidget {
   final FrameType selectedFrame;
-  final List<XFile> photos; // 촬영된 전체 컷
+  final List<XFile> photos;
+  final String? overlayFrame;
 
   const CutSelectionScreen({
     super.key,
     required this.selectedFrame,
     required this.photos,
+    this.overlayFrame,
   });
 
   @override
@@ -23,20 +23,63 @@ class CutSelectionScreen extends StatefulWidget {
 }
 
 class _CutSelectionScreenState extends State<CutSelectionScreen> {
-  /// 후보 컷 풀 (카메라 촬영분 + 갤러리에서 추가한 사진).
   late List<XFile> _pool;
-
-  /// 선택된 컷의 순서. _pool에 대한 인덱스를 순서대로 보관.
   final List<int> _selectedOrder = [];
 
   int get _required => widget.selectedFrame.photoCount;
   bool get _isComplete => _selectedOrder.length == _required;
 
+  // ── 프레임 슬롯 좌표 맵 (result_screen과 동일) ─────────────────────────
+  static const Map<String, List<List<double>>> _frameSlots = {
+    '1.png':  [[0.1481,0.0927,0.8426,0.3146],[0.1519,0.3573,0.8463,0.5792],[0.1519,0.6240,0.8463,0.8453]],
+    '2.png':  [[0.1491,0.0938,0.8407,0.3135],[0.1537,0.3578,0.8444,0.5781],[0.1537,0.6245,0.8444,0.8448]],
+    '3.png':  [[0.1481,0.0932,0.8426,0.3146],[0.1528,0.3573,0.8454,0.5786],[0.1528,0.6240,0.8463,0.8453]],
+    '4.png':  [[0.0662,0.0468,0.4770,0.4421],[0.5208,0.0468,0.9327,0.4421],[0.0662,0.4825,0.4770,0.8770],[0.5208,0.4825,0.9304,0.8770]],
+    '5.png':  [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4208,0.9225,0.5933],[0.075,0.6158,0.9225,0.7883]],
+    '6.png':  [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4208,0.9225,0.5933],[0.075,0.6158,0.9225,0.7883]],
+    '7.png':  [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '8.png':  [[0.075,0.0308,0.9225,0.2033],[0.075,0.2267,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '9.png':  [[0.0718,0.0683,0.477, 0.423],[0.5387,0.0683,0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
+    '10.png': [[0.0718,0.069, 0.477, 0.423],[0.5387,0.069, 0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
+    '11.png': [[0.0718,0.0683,0.477, 0.423],[0.5387,0.0683,0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
+    '12.png': [[0.1574,0.0667,0.8417,0.2927],[0.1574,0.3214,0.8417,0.5474],[0.1574,0.5760,0.8417,0.8021]],
+    '13.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5469],[0.1574,0.5760,0.8417,0.8021]],
+    '14.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '15.png': [[0.075,0.0317,0.9225,0.2033],[0.075,0.2267,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '16.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4208,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '17.png': [[0.075,0.0308,0.9225,0.2033],[0.075,0.2258,0.9225,0.3983],[0.075,0.4217,0.9225,0.5933],[0.075,0.6167,0.9225,0.7883]],
+    '18.png': [[0.0718,0.069, 0.477, 0.423],[0.5387,0.069, 0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
+    '19.png': [[0.0718,0.069, 0.477, 0.423],[0.5387,0.069, 0.9428,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9428,0.8429]],
+    '20.png': [[0.073, 0.069, 0.477, 0.423],[0.5387,0.069, 0.9428,0.423],[0.073, 0.4889,0.477, 0.8429],[0.5387,0.4889,0.9428,0.8429]],
+    '21.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5469],[0.1574,0.576, 0.8417,0.8021]],
+    '22.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5469],[0.1574,0.576, 0.8417,0.8021]],
+    '23.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5474],[0.1574,0.576, 0.8417,0.8021]],
+    '24.png': [[0.1574,0.0667,0.8417,0.2922],[0.1574,0.3214,0.8417,0.5469],[0.1574,0.576, 0.8417,0.8021]],
+    '25.png': [[0.1574,0.0667,0.8417,0.2927],[0.1574,0.3214,0.8417,0.5474],[0.1574,0.576, 0.8417,0.8021]],
+    '26.png': [[0.1574,0.0667,0.8417,0.2927],[0.1574,0.3214,0.8417,0.5474],[0.1574,0.576, 0.8417,0.8021]],
+    '27.png': [[0.0718,0.0683,0.477, 0.423],[0.5387,0.0683,0.9439,0.423],[0.0718,0.4889,0.477, 0.8429],[0.5387,0.4889,0.9439,0.8429]],
+    '28.png': [[0.0718,0.0683,0.4781,0.4238],[0.5376,0.0683,0.9439,0.4238],[0.0718,0.4881,0.4781,0.8437],[0.5376,0.4881,0.9439,0.8437]],
+    '29.png': [[0.0725,0.0308,0.925, 0.2033],[0.0725,0.2258,0.9225,0.3992],[0.0725,0.4208,0.925, 0.5942],[0.075, 0.6158,0.9225,0.7883]],
+    '30.png': [[0.075, 0.0308,0.9225,0.2033],[0.075, 0.2258,0.9225,0.3983],[0.075, 0.4208,0.9225,0.5933],[0.075, 0.6158,0.9225,0.7692]],
+  };
+
+  static const Map<String, double> _frameAspectRatio = {
+    '1.png':  1920/1080, '2.png':  1920/1080, '3.png':  1920/1080,
+    '4.png':  1260/891,  '5.png':  1200/400,  '6.png':  1200/400,
+    '7.png':  1200/400,  '8.png':  1200/400,  '9.png':  1260/891,
+    '10.png': 1260/891,  '11.png': 1260/891,  '12.png': 1920/1080,
+    '13.png': 1920/1080, '14.png': 1200/400,  '15.png': 1200/400,
+    '16.png': 1200/400,  '17.png': 1200/400,  '18.png': 1260/891,
+    '19.png': 1260/891,  '20.png': 1260/891,  '21.png': 1920/1080,
+    '22.png': 1920/1080, '23.png': 1920/1080, '24.png': 1920/1080,
+    '25.png': 1920/1080, '26.png': 1920/1080, '27.png': 1260/891,
+    '28.png': 1260/891,  '29.png': 1200/400,  '30.png': 1200/400,
+  };
+
   @override
   void initState() {
     super.initState();
     _pool = List<XFile>.from(widget.photos);
-    // 기본값: 앞에서부터 필요한 장수만큼 자동 선택
     for (int i = 0; i < _pool.length && _selectedOrder.length < _required; i++) {
       _selectedOrder.add(i);
     }
@@ -61,12 +104,10 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
       if (_selectedOrder.length >= _required) {
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(
-              content: Text('최대 $_required장까지 선택할 수 있어요. 먼저 컷을 해제해 주세요.'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          ..showSnackBar(SnackBar(
+            content: Text('최대 $_required장까지 선택할 수 있어요. 먼저 컷을 해제해 주세요.'),
+            duration: const Duration(seconds: 2),
+          ));
         return;
       }
       _selectedOrder.add(photoIndex);
@@ -90,8 +131,115 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
         builder: (_) => ResultScreen(
           selectedFrame: widget.selectedFrame,
           photos: ordered,
+          overlayFrame: widget.overlayFrame,
         ),
       ),
+    );
+  }
+
+  // ── 커스텀 프레임 미리보기 ──────────────────────────────────────────────
+  // 선택된 컷들이 프레임 슬롯에 실시간으로 채워지는 위젯
+  Widget _buildFramePreview() {
+    final overlay = widget.overlayFrame;
+
+    // 커스텀 프레임이 없으면 기존 가로 썸네일 목록으로 폴백
+    if (overlay == null) return _buildDefaultThumbRow();
+
+    final fileName = overlay.split('/').last;
+    final slots = _frameSlots[fileName];
+
+    // 슬롯 정보가 없으면 폴백
+    if (slots == null) return _buildDefaultThumbRow();
+
+    // 미리보기 높이 고정 후 너비를 비율로 계산
+    const double previewH = 200.0;
+    final double aspectRatio = _frameAspectRatio[fileName] ?? (1920 / 1080);
+    final double previewW = previewH / aspectRatio;
+
+    return SizedBox(
+      height: previewH,
+      child: Center(
+        child: SizedBox(
+          width: previewW,
+          height: previewH,
+          child: Stack(
+            children: [
+              // 1) 선택된 사진을 슬롯 위치에 배치 (빈 슬롯은 회색 박스)
+              for (int i = 0; i < slots.length; i++)
+                Positioned(
+                  left:   previewW * slots[i][0],
+                  top:    previewH * slots[i][1],
+                  width:  previewW * (slots[i][2] - slots[i][0]),
+                  height: previewH * (slots[i][3] - slots[i][1]),
+                  child: i < _selectedOrder.length
+                      ? Image.file(
+                          File(_pool[_selectedOrder[i]].path),
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          color: Colors.grey.shade300,
+                          child: Center(
+                            child: Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                color: Colors.grey.shade500,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                ),
+
+              // 2) 커스텀 프레임 이미지 (위 레이어)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Image.asset(
+                    overlay,
+                    fit: BoxFit.fill,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 커스텀 프레임 없을 때 기존 가로 썸네일 목록
+  Widget _buildDefaultThumbRow() {
+    final primaryColor = AppColors.primaryOf(context);
+    return SizedBox(
+      height: 120,
+      child: _selectedOrder.isEmpty
+          ? Center(
+              child: Text(
+                '아래에서 사진을 선택해 주세요',
+                style: TextStyle(
+                  color: AppColors.textSubOf(context),
+                  fontSize: 13,
+                ),
+              ),
+            )
+          : ReorderableListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              buildDefaultDragHandles: true,
+              itemCount: _selectedOrder.length,
+              onReorder: _onReorder,
+              itemBuilder: (context, index) {
+                final photoIndex = _selectedOrder[index];
+                return _SelectedThumb(
+                  key: ValueKey('selected_$photoIndex'),
+                  path: _pool[photoIndex].path,
+                  order: index + 1,
+                  primaryColor: primaryColor,
+                  onRemove: () => _toggle(photoIndex),
+                );
+              },
+            ),
     );
   }
 
@@ -101,6 +249,10 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
     final primaryColor = AppColors.primaryOf(context);
     final textMain = AppColors.textMainOf(context);
     final textSub = AppColors.textSubOf(context);
+
+    // 커스텀 프레임 사용 여부
+    final hasOverlay = widget.overlayFrame != null &&
+        _frameSlots.containsKey(widget.overlayFrame!.split('/').last);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -130,68 +282,79 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
       ),
       body: Column(
         children: [
-          // ── 선택한 순서 (드래그로 재배치) ─────────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-            child: Row(
-              children: [
-                Text('선택한 순서',
+          // ── 상단: 프레임 미리보기 or 선택 순서 썸네일 ──────────────────
+          if (hasOverlay) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+              child: Row(
+                children: [
+                  Text(
+                    '프레임 미리보기',
                     style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: textMain)),
-                const SizedBox(width: 6),
-                Text('길게 눌러 드래그하면 순서를 바꿀 수 있어요',
-                    style: TextStyle(fontSize: 11, color: textSub)),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 120,
-            child: _selectedOrder.isEmpty
-                ? Center(
-                    child: Text('아래에서 사진을 선택해 주세요',
-                        style: TextStyle(color: textSub, fontSize: 13)),
-                  )
-                : ReorderableListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    buildDefaultDragHandles: true,
-                    itemCount: _selectedOrder.length,
-                    onReorder: _onReorder,
-                    itemBuilder: (context, index) {
-                      final photoIndex = _selectedOrder[index];
-                      return _SelectedThumb(
-                        key: ValueKey('selected_$photoIndex'),
-                        path: _pool[photoIndex].path,
-                        order: index + 1,
-                        primaryColor: primaryColor,
-                        onRemove: () => _toggle(photoIndex),
-                      );
-                    },
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: textMain,
+                    ),
                   ),
-          ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '컷을 선택하면 슬롯에 채워져요',
+                    style: TextStyle(fontSize: 11, color: textSub),
+                  ),
+                ],
+              ),
+            ),
+            _buildFramePreview(),
+            const SizedBox(height: 4),
+          ] else ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Row(
+                children: [
+                  Text(
+                    '선택한 순서',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: textMain,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '길게 눌러 드래그하면 순서를 바꿀 수 있어요',
+                    style: TextStyle(fontSize: 11, color: textSub),
+                  ),
+                ],
+              ),
+            ),
+            _buildDefaultThumbRow(),
+          ],
 
           Divider(color: AppColors.dividerOf(context), height: 24),
 
-          // ── 전체 컷 (탭하여 선택/해제) ────────────────
+          // ── 전체 컷 ──────────────────────────────────────────────────
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('전체 컷 (${_pool.length}장)',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: textMain)),
+                Text(
+                  '전체 컷 (${_pool.length}장)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: textMain,
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: _addFromGallery,
                   icon: Icon(Icons.add_photo_alternate_outlined,
                       size: 18, color: primaryColor),
-                  label: Text('갤러리에서 추가',
-                      style: TextStyle(
-                          color: primaryColor, fontWeight: FontWeight.w600)),
+                  label: Text(
+                    '갤러리에서 추가',
+                    style: TextStyle(
+                        color: primaryColor, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),
@@ -218,7 +381,7 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
             ),
           ),
 
-          // ── 하단 완료 버튼 ───────────────────────────
+          // ── 하단 완료 버튼 ──────────────────────────────────────────
           SafeArea(
             top: false,
             child: Padding(
@@ -252,7 +415,6 @@ class _CutSelectionScreenState extends State<CutSelectionScreen> {
   }
 }
 
-/// 상단 "선택한 순서" 영역의 썸네일 (순서 번호 + 제거 버튼)
 class _SelectedThumb extends StatelessWidget {
   final String path;
   final int order;
@@ -286,38 +448,24 @@ class _SelectedThumb extends StatelessWidget {
               child: Image.file(File(path), fit: BoxFit.cover),
             ),
           ),
-          // 순서 번호 배지
           Positioned(
-            top: 4,
-            left: 4,
+            top: 4, left: 4,
             child: Container(
-              width: 22,
-              height: 22,
+              width: 22, height: 22,
               alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: primaryColor,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: primaryColor, shape: BoxShape.circle),
               child: Text('$order',
                   style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold)),
+                      color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
-          // 제거 버튼
           Positioned(
-            top: -6,
-            right: -6,
+            top: -6, right: -6,
             child: GestureDetector(
               onTap: onRemove,
               child: Container(
-                width: 24,
-                height: 24,
-                decoration: const BoxDecoration(
-                  color: Colors.black87,
-                  shape: BoxShape.circle,
-                ),
+                width: 24, height: 24,
+                decoration: const BoxDecoration(color: Colors.black87, shape: BoxShape.circle),
                 child: const Icon(Icons.close, color: Colors.white, size: 16),
               ),
             ),
@@ -328,10 +476,9 @@ class _SelectedThumb extends StatelessWidget {
   }
 }
 
-/// 하단 "전체 컷" 그리드 셀
 class _GridCut extends StatelessWidget {
   final String path;
-  final int? order; // null = 미선택
+  final int? order;
   final Color primaryColor;
   final VoidCallback onTap;
 
@@ -355,7 +502,6 @@ class _GridCut extends StatelessWidget {
               child: Image.file(File(path), fit: BoxFit.cover),
             ),
           ),
-          // 선택 시 강조 테두리 + 반투명 오버레이
           if (selected)
             Positioned.fill(
               child: Container(
@@ -366,13 +512,10 @@ class _GridCut extends StatelessWidget {
                 ),
               ),
             ),
-          // 순서 번호 배지
           Positioned(
-            top: 6,
-            left: 6,
+            top: 6, left: 6,
             child: Container(
-              width: 24,
-              height: 24,
+              width: 24, height: 24,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: selected ? primaryColor : Colors.black45,
@@ -381,11 +524,8 @@ class _GridCut extends StatelessWidget {
               child: selected
                   ? Text('$order',
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold))
-                  : const Icon(Icons.circle_outlined,
-                      color: Colors.white70, size: 16),
+                          color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))
+                  : const Icon(Icons.circle_outlined, color: Colors.white70, size: 16),
             ),
           ),
         ],

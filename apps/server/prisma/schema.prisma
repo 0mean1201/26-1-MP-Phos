@@ -1,6 +1,5 @@
 datasource db {
   provider = "mysql"
-
 }
 
 generator client {
@@ -8,25 +7,12 @@ generator client {
   output   = "../src/generated/client"
 }
 
-// 소셜 로그인 사용자 테이블
-model User {
-  id           Int           @id @default(autoincrement())
-  googleId     String        @unique
-  email        String        @unique
-  name         String
-  picture      String?       @db.Text
-  createdAt    DateTime      @default(now())
-
-  appInstances AppInstance[]
-}
-
 // 기기 고유 ID 테이블
 model AppInstance {
   id        Int      @id @default(autoincrement())
-  userId    Int?
+  deviceId  String   @unique
   createdAt DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id])
   photos    Photo[]
   groups    Group[]
 }

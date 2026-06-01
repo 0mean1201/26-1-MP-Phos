@@ -1,8 +1,8 @@
 import * as repository from "./repository";
 import { CreatePhotoRequest, IntimacyEntry, RepresentativeFaceResponse } from "./dto";
 
-export const registerAppInstance = async () => {
-  return await repository.createAppInstance();
+export const registerAppInstance = async (deviceId: string) => {
+  return await repository.upsertAppInstance(deviceId);
 };
 
 export const uploadPhotoData = async (data: CreatePhotoRequest) => {
