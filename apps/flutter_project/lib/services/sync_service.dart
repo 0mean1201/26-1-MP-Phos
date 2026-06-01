@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:android_id/android_id.dart';
 import 'api_service.dart';
 import 'photo_storage_service.dart';
 
@@ -37,7 +39,11 @@ class SyncService {
 
   Future<void> _retryRegistration() async {
     try {
-      final id = await ApiService().registerAppInstance();
+      String deviceId = 'android_unknown';
+      if (Platform.isAndroid) {
+        deviceId = await const AndroidId().getId() ?? 'android_unknown';
+      }
+      final id = await ApiService().registerAppInstance(deviceId);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('phos_app_instance_id', id);
       ApiService().setAppInstanceId(id);

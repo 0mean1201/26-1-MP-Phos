@@ -105,8 +105,8 @@ class ApiService {
   }
 
   /// 앱 인스턴스를 서버에 등록하고 ID를 반환
-  Future<int> registerAppInstance() async {
-    final json = await _post('/api/app-instances', {});
+  Future<int> registerAppInstance(String deviceId) async {
+    final json = await _post('/api/app-instances', {'deviceId': deviceId});
     return (json['data']['appInstanceId'] as int);
   }
 

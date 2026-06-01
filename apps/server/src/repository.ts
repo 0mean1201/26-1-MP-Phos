@@ -15,8 +15,12 @@ const prisma = new PrismaClient({ adapter });
 
 export { prisma };
 
-export const createAppInstance = async () => {
-  return await prisma.appInstance.create({ data: {} });
+export const upsertAppInstance = async (deviceId: string) => {
+  return await prisma.appInstance.upsert({
+    where: { deviceId },
+    create: { deviceId },
+    update: {},
+  });
 };
 
 export const createPhotoAndFaces = async (

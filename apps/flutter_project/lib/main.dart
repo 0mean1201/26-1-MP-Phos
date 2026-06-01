@@ -1,9 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:android_id/android_id.dart';
 import 'screens/main_layout.dart';
 import 'services/face_recognition_service.dart';
 import 'services/api_service.dart';
-import 'services/auth_service.dart';
 import 'services/sync_service.dart';
 import 'core/constants.dart';
 import 'core/app_state.dart';
@@ -15,7 +16,6 @@ Future<void> main() async {
   await FrameService().initialize(); // ← 추가: 저장된 프레임 불러오기
   await _ensureAppInstance();
   await _loadSavedTheme();
-  await AuthService().init();
   runApp(const PhotoBoothApp());
 }
 
@@ -29,6 +29,15 @@ Future<void> _loadSavedTheme() async {
   });
 }
 
+Future<String> _getDeviceId() async {
+  try {
+    if (Platform.isAndroid) {
+      return await const AndroidId().getId() ?? 'android_unknown';
+    }
+  } catch (_) {}
+  return 'device_${DateTime.now().millisecondsSinceEpoch}';
+}
+
 Future<void> _ensureAppInstance() async {
   final prefs = await SharedPreferences.getInstance();
   final stored = prefs.getInt('phos_app_instance_id');
@@ -37,10 +46,13 @@ Future<void> _ensureAppInstance() async {
     return;
   }
   try {
-    final id = await ApiService().registerAppInstance();
+    final deviceId = await _getDeviceId();
+    final id = await ApiService().registerAppInstance(deviceId);
     await prefs.setInt('phos_app_instance_id', id);
     ApiService().setAppInstanceId(id);
-  } catch (_) {
+  } catch (e, st) {
+    debugPrint('AppInstance 등록 실패: $e');
+    debugPrint('$st');
     await prefs.setInt('phos_app_instance_id', -1);
     ApiService().setAppInstanceId(-1);
   }
