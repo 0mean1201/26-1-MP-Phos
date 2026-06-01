@@ -17,7 +17,7 @@ import '../services/sync_service.dart';
 class ResultScreen extends StatefulWidget {
   final FrameType selectedFrame;
   final List<XFile> photos;
-  final String? overlayFrame; // 커스텀 프레임 경로 (없으면 null)
+  final String? overlayFrame;
 
   const ResultScreen({
     super.key,
@@ -34,7 +34,6 @@ class _ResultScreenState extends State<ResultScreen> {
   final GlobalKey _globalKey = GlobalKey();
   bool _isSaving = false;
 
-  // ── 저장 버튼: 제목·태그 입력 다이얼로그 (공동 작업자 코드) ─────────────
   Future<void> _onSavePressed() async {
     final titleController = TextEditingController();
     final tagController = TextEditingController();
@@ -97,7 +96,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  // ── 실제 저장 로직 ────────────────────────────────────────────────────
   Future<void> _saveResultImage({
     required String title,
     required String tag,
@@ -108,10 +106,8 @@ class _ResultScreenState extends State<ResultScreen> {
       bool hasAccess = await Gal.hasAccess();
       if (!hasAccess) await Gal.requestAccess();
 
-      // asset 이미지가 완전히 렌더된 후 캡처 (내 코드)
       await Future.delayed(const Duration(milliseconds: 300));
 
-      // 1. 위젯 캡처 → 임시 파일
       RenderRepaintBoundary boundary =
           _globalKey.currentContext!.findRenderObject()
               as RenderRepaintBoundary;
@@ -126,21 +122,17 @@ class _ResultScreenState extends State<ResultScreen> {
       final file = await File('${appDir.path}/$fileName').create();
       await file.writeAsBytes(pngBytes);
 
-      // 2. 갤러리에 저장
       await Gal.putImage(file.path);
 
-      // 3. 얼굴 임베딩 추출
       final allEmbeddings = <List<double>>[];
       for (final photo in widget.photos) {
         final embeddings = await FaceRecognitionService().getEmbeddings(photo);
         allEmbeddings.addAll(embeddings);
       }
 
-      // 4. 그루핑
       final groupingResult =
           await GroupingService().assignGroups(allEmbeddings);
 
-      // 5. 로컬 저장 (제목·태그 포함 — 공동 작업자 코드)
       final localPhoto = LocalPhoto(
         path: file.path,
         frameType: widget.selectedFrame.name,
@@ -154,7 +146,6 @@ class _ResultScreenState extends State<ResultScreen> {
       );
       await PhotoStorageService().addPhoto(localPhoto);
 
-      // 6. 백그라운드 서버 업로드 시도
       if (allEmbeddings.isNotEmpty) SyncService().enqueuePendingPhotos();
 
       if (mounted) {
@@ -174,7 +165,6 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  // ── 빌드 ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -189,8 +179,7 @@ class _ResultScreenState extends State<ResultScreen> {
         elevation: 0,
         iconTheme: IconThemeData(color: textMain),
         title: Text('Result',
-            style:
-                TextStyle(color: textMain, fontWeight: FontWeight.bold)),
+            style: TextStyle(color: textMain, fontWeight: FontWeight.bold)),
       ),
       body: Center(
         child: SingleChildScrollView(
@@ -206,7 +195,6 @@ class _ResultScreenState extends State<ResultScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ElevatedButton.icon(
-                    // 저장 버튼: 다이얼로그 먼저 띄움 (공동 작업자 코드)
                     onPressed: _isSaving ? null : _onSavePressed,
                     icon: _isSaving
                         ? const SizedBox(
@@ -251,7 +239,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  // ── 렌더링: 커스텀 프레임 여부로 분기 ────────────────────────────────
   Widget _buildRenderedStrip() {
     if (widget.overlayFrame != null) {
       return _buildCustomFrameStrip();
@@ -259,7 +246,6 @@ class _ResultScreenState extends State<ResultScreen> {
     return _buildDefaultStrip();
   }
 
-  // ── 기본 프레임 (내 코드 기반, 공동 작업자 스타일 유지) ──────────────
   Widget _buildDefaultStrip() {
     final isTrioFrame = widget.selectedFrame == FrameType.trio;
     return Container(
@@ -278,8 +264,7 @@ class _ResultScreenState extends State<ResultScreen> {
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
@@ -297,8 +282,7 @@ class _ResultScreenState extends State<ResultScreen> {
                         padding: const EdgeInsets.only(bottom: 10),
                         child: AspectRatio(
                           aspectRatio: 3 / 2,
-                          child: Image.file(File(photo.path),
-                              fit: BoxFit.cover),
+                          child: Image.file(File(photo.path), fit: BoxFit.cover),
                         ),
                       ))
                   .toList(),
@@ -320,7 +304,6 @@ class _ResultScreenState extends State<ResultScreen> {
     );
   }
 
-  // ── 슬롯 좌표 맵 (내 코드 전체 유지) ────────────────────────────────
   static const Map<String, List<List<double>>> _frameSlots = {
     '1.png':  [[0.1481,0.0927,0.8426,0.3146],[0.1519,0.3573,0.8463,0.5792],[0.1519,0.6240,0.8463,0.8453]],
     '2.png':  [[0.1491,0.0938,0.8407,0.3135],[0.1537,0.3578,0.8444,0.5781],[0.1537,0.6245,0.8444,0.8448]],
@@ -367,7 +350,6 @@ class _ResultScreenState extends State<ResultScreen> {
     '28.png': 1260/891,  '29.png': 1200/400,  '30.png': 1200/400,
   };
 
-  // ── 커스텀 프레임 스트립 (내 코드 전체 유지) ─────────────────────────
   Widget _buildCustomFrameStrip() {
     final fileName = widget.overlayFrame!.split('/').last;
     final slots = _frameSlots[fileName];
@@ -384,7 +366,6 @@ class _ResultScreenState extends State<ResultScreen> {
       height: frameH,
       child: Stack(
         children: [
-          // 1) 사진 (아래 레이어)
           for (int i = 0; i < usedSlots.length; i++)
             Positioned(
               left:   frameW * usedSlots[i][0],
@@ -396,7 +377,6 @@ class _ResultScreenState extends State<ResultScreen> {
                 fit: BoxFit.cover,
               ),
             ),
-          // 2) 프레임 이미지 (위 레이어 — 장식이 사진을 자연스럽게 덮음)
           Positioned.fill(
             child: IgnorePointer(
               child: Image.asset(
