@@ -31,7 +31,7 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
   @override
   void initState() {
     super.initState();
-    _pendingOverlayFileName = _frameService.selectedFileName;
+    _pendingOverlayFileName = null; // 앱 진입 시 항상 선택 없음
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -444,13 +444,8 @@ class _FrameSelectionScreenState extends State<FrameSelectionScreen>
                         onTap: () {
                           setState(() {
                             _selectedFrame = frame;
-                            // 호환 안 되는 커스텀 프레임 자동 해제
-                            if (_pendingOverlayFileName != null) {
-                              final compatible = FrameService.compatibleFrames(frame.name);
-                              if (!compatible.contains(_pendingOverlayFileName)) {
-                                _pendingOverlayFileName = null;
-                              }
-                            }
+                            // 레이아웃 변경 시 항상 커스텀 프레임 선택 해제
+                            _pendingOverlayFileName = null;
                           });
                         },
                       ),

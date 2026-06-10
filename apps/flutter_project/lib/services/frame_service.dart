@@ -30,6 +30,12 @@ class FrameService extends ChangeNotifier {
     '22.png',  // 1x3 보라2
     '23.png',  // 1x3 파랑
     '24.png',  // 1x3 빨강
+    '31.png',  // solo 검정
+    '32.png',  // solo 보라
+    '33.png',  // solo 파랑
+    '34.png',  // solo 초록
+    '35.png',  // solo 노랑
+    '36.png',  // solo 빨강
   ];
  
   // ── 컨셉 프레임: 캐릭터/브랜드 등 장식이 있는 프레임 ────────────────────
@@ -45,6 +51,9 @@ class FrameService extends ChangeNotifier {
     '28.png',  // 2x2 가천대컷
     '29.png',  // 1x4 가천컷
     '30.png',  // 1x4 빅변내컷
+    '37.png',  // solo 가천
+    '38.png',  // solo 빅변내컷
+    '39.png',  // solo 맨유
   ];
  
   // ── 전체 목록 (저장값 유효성 검사용) ──────────────────────────────────
@@ -59,7 +68,7 @@ class FrameService extends ChangeNotifier {
     'classic': ['5.png','6.png','7.png','8.png','15.png','16.png','17.png','29.png','30.png'],
     'square':  ['4.png','9.png','10.png','11.png','18.png','19.png','20.png','27.png','28.png'],
     'trio':    ['1.png','2.png','3.png','12.png','13.png','21.png','22.png','23.png','24.png','25.png','26.png'],
-    'solo':    [],
+    'solo':    ['31.png','32.png','33.png','34.png','35.png','36.png','37.png','38.png','39.png'],
   };
  
   /// 현재 FrameType에서 사용 가능한 프레임 목록 반환
