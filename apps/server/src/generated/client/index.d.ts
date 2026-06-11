@@ -1230,16 +1230,19 @@ export namespace Prisma {
 
   export type AppInstanceMinAggregateOutputType = {
     id: number | null
+    deviceId: string | null
     createdAt: Date | null
   }
 
   export type AppInstanceMaxAggregateOutputType = {
     id: number | null
+    deviceId: string | null
     createdAt: Date | null
   }
 
   export type AppInstanceCountAggregateOutputType = {
     id: number
+    deviceId: number
     createdAt: number
     _all: number
   }
@@ -1255,16 +1258,19 @@ export namespace Prisma {
 
   export type AppInstanceMinAggregateInputType = {
     id?: true
+    deviceId?: true
     createdAt?: true
   }
 
   export type AppInstanceMaxAggregateInputType = {
     id?: true
+    deviceId?: true
     createdAt?: true
   }
 
   export type AppInstanceCountAggregateInputType = {
     id?: true
+    deviceId?: true
     createdAt?: true
     _all?: true
   }
@@ -1357,6 +1363,7 @@ export namespace Prisma {
 
   export type AppInstanceGroupByOutputType = {
     id: number
+    deviceId: string
     createdAt: Date
     _count: AppInstanceCountAggregateOutputType | null
     _avg: AppInstanceAvgAggregateOutputType | null
@@ -1381,6 +1388,7 @@ export namespace Prisma {
 
   export type AppInstanceSelect<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     id?: boolean
+    deviceId?: boolean
     createdAt?: boolean
     photos?: boolean | AppInstance$photosArgs<ExtArgs>
     groups?: boolean | AppInstance$groupsArgs<ExtArgs>
@@ -1391,10 +1399,11 @@ export namespace Prisma {
 
   export type AppInstanceSelectScalar = {
     id?: boolean
+    deviceId?: boolean
     createdAt?: boolean
   }
 
-  export type AppInstanceOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "createdAt", ExtArgs["result"]["appInstance"]>
+  export type AppInstanceOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "deviceId" | "createdAt", ExtArgs["result"]["appInstance"]>
   export type AppInstanceInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     photos?: boolean | AppInstance$photosArgs<ExtArgs>
     groups?: boolean | AppInstance$groupsArgs<ExtArgs>
@@ -1409,6 +1418,7 @@ export namespace Prisma {
     }
     scalars: $Extensions.GetPayloadResult<{
       id: number
+      deviceId: string
       createdAt: Date
     }, ExtArgs["result"]["appInstance"]>
     composites: {}
@@ -1782,6 +1792,7 @@ export namespace Prisma {
    */
   interface AppInstanceFieldRefs {
     readonly id: FieldRef<"AppInstance", 'Int'>
+    readonly deviceId: FieldRef<"AppInstance", 'String'>
     readonly createdAt: FieldRef<"AppInstance", 'DateTime'>
   }
     
@@ -2006,7 +2017,7 @@ export namespace Prisma {
     /**
      * The data needed to create a AppInstance.
      */
-    data?: XOR<AppInstanceCreateInput, AppInstanceUncheckedCreateInput>
+    data: XOR<AppInstanceCreateInput, AppInstanceUncheckedCreateInput>
   }
 
   /**
@@ -5190,6 +5201,7 @@ export namespace Prisma {
 
   export const AppInstanceScalarFieldEnum: {
     id: 'id',
+    deviceId: 'deviceId',
     createdAt: 'createdAt'
   };
 
@@ -5240,6 +5252,13 @@ export namespace Prisma {
   };
 
   export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
+
+
+  export const AppInstanceOrderByRelevanceFieldEnum: {
+    deviceId: 'deviceId'
+  };
+
+  export type AppInstanceOrderByRelevanceFieldEnum = (typeof AppInstanceOrderByRelevanceFieldEnum)[keyof typeof AppInstanceOrderByRelevanceFieldEnum]
 
 
   export const PhotoOrderByRelevanceFieldEnum: {
@@ -5294,16 +5313,16 @@ export namespace Prisma {
 
 
   /**
-   * Reference to a field of type 'DateTime'
+   * Reference to a field of type 'String'
    */
-  export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
+  export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String'>
     
 
 
   /**
-   * Reference to a field of type 'String'
+   * Reference to a field of type 'DateTime'
    */
-  export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String'>
+  export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
     
 
 
@@ -5336,6 +5355,7 @@ export namespace Prisma {
     OR?: AppInstanceWhereInput[]
     NOT?: AppInstanceWhereInput | AppInstanceWhereInput[]
     id?: IntFilter<"AppInstance"> | number
+    deviceId?: StringFilter<"AppInstance"> | string
     createdAt?: DateTimeFilter<"AppInstance"> | Date | string
     photos?: PhotoListRelationFilter
     groups?: GroupListRelationFilter
@@ -5343,23 +5363,27 @@ export namespace Prisma {
 
   export type AppInstanceOrderByWithRelationInput = {
     id?: SortOrder
+    deviceId?: SortOrder
     createdAt?: SortOrder
     photos?: PhotoOrderByRelationAggregateInput
     groups?: GroupOrderByRelationAggregateInput
+    _relevance?: AppInstanceOrderByRelevanceInput
   }
 
   export type AppInstanceWhereUniqueInput = Prisma.AtLeast<{
     id?: number
+    deviceId?: string
     AND?: AppInstanceWhereInput | AppInstanceWhereInput[]
     OR?: AppInstanceWhereInput[]
     NOT?: AppInstanceWhereInput | AppInstanceWhereInput[]
     createdAt?: DateTimeFilter<"AppInstance"> | Date | string
     photos?: PhotoListRelationFilter
     groups?: GroupListRelationFilter
-  }, "id">
+  }, "id" | "deviceId">
 
   export type AppInstanceOrderByWithAggregationInput = {
     id?: SortOrder
+    deviceId?: SortOrder
     createdAt?: SortOrder
     _count?: AppInstanceCountOrderByAggregateInput
     _avg?: AppInstanceAvgOrderByAggregateInput
@@ -5373,6 +5397,7 @@ export namespace Prisma {
     OR?: AppInstanceScalarWhereWithAggregatesInput[]
     NOT?: AppInstanceScalarWhereWithAggregatesInput | AppInstanceScalarWhereWithAggregatesInput[]
     id?: IntWithAggregatesFilter<"AppInstance"> | number
+    deviceId?: StringWithAggregatesFilter<"AppInstance"> | string
     createdAt?: DateTimeWithAggregatesFilter<"AppInstance"> | Date | string
   }
 
@@ -5550,6 +5575,7 @@ export namespace Prisma {
   }
 
   export type AppInstanceCreateInput = {
+    deviceId: string
     createdAt?: Date | string
     photos?: PhotoCreateNestedManyWithoutAppInstanceInput
     groups?: GroupCreateNestedManyWithoutAppInstanceInput
@@ -5557,12 +5583,14 @@ export namespace Prisma {
 
   export type AppInstanceUncheckedCreateInput = {
     id?: number
+    deviceId: string
     createdAt?: Date | string
     photos?: PhotoUncheckedCreateNestedManyWithoutAppInstanceInput
     groups?: GroupUncheckedCreateNestedManyWithoutAppInstanceInput
   }
 
   export type AppInstanceUpdateInput = {
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     photos?: PhotoUpdateManyWithoutAppInstanceNestedInput
     groups?: GroupUpdateManyWithoutAppInstanceNestedInput
@@ -5570,6 +5598,7 @@ export namespace Prisma {
 
   export type AppInstanceUncheckedUpdateInput = {
     id?: IntFieldUpdateOperationsInput | number
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     photos?: PhotoUncheckedUpdateManyWithoutAppInstanceNestedInput
     groups?: GroupUncheckedUpdateManyWithoutAppInstanceNestedInput
@@ -5577,15 +5606,18 @@ export namespace Prisma {
 
   export type AppInstanceCreateManyInput = {
     id?: number
+    deviceId: string
     createdAt?: Date | string
   }
 
   export type AppInstanceUpdateManyMutationInput = {
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
   export type AppInstanceUncheckedUpdateManyInput = {
     id?: IntFieldUpdateOperationsInput | number
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
 
@@ -5749,6 +5781,21 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type StringFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel>
+    in?: string[]
+    notIn?: string[]
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    search?: string
+    not?: NestedStringFilter<$PrismaModel> | string
+  }
+
   export type DateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[]
@@ -5780,8 +5827,15 @@ export namespace Prisma {
     _count?: SortOrder
   }
 
+  export type AppInstanceOrderByRelevanceInput = {
+    fields: AppInstanceOrderByRelevanceFieldEnum | AppInstanceOrderByRelevanceFieldEnum[]
+    sort: SortOrder
+    search: string
+  }
+
   export type AppInstanceCountOrderByAggregateInput = {
     id?: SortOrder
+    deviceId?: SortOrder
     createdAt?: SortOrder
   }
 
@@ -5791,11 +5845,13 @@ export namespace Prisma {
 
   export type AppInstanceMaxOrderByAggregateInput = {
     id?: SortOrder
+    deviceId?: SortOrder
     createdAt?: SortOrder
   }
 
   export type AppInstanceMinOrderByAggregateInput = {
     id?: SortOrder
+    deviceId?: SortOrder
     createdAt?: SortOrder
   }
 
@@ -5819,6 +5875,24 @@ export namespace Prisma {
     _max?: NestedIntFilter<$PrismaModel>
   }
 
+  export type StringWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel>
+    in?: string[]
+    notIn?: string[]
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    search?: string
+    not?: NestedStringWithAggregatesFilter<$PrismaModel> | string
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedStringFilter<$PrismaModel>
+    _max?: NestedStringFilter<$PrismaModel>
+  }
+
   export type DateTimeWithAggregatesFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[]
@@ -5831,21 +5905,6 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedDateTimeFilter<$PrismaModel>
     _max?: NestedDateTimeFilter<$PrismaModel>
-  }
-
-  export type StringFilter<$PrismaModel = never> = {
-    equals?: string | StringFieldRefInput<$PrismaModel>
-    in?: string[]
-    notIn?: string[]
-    lt?: string | StringFieldRefInput<$PrismaModel>
-    lte?: string | StringFieldRefInput<$PrismaModel>
-    gt?: string | StringFieldRefInput<$PrismaModel>
-    gte?: string | StringFieldRefInput<$PrismaModel>
-    contains?: string | StringFieldRefInput<$PrismaModel>
-    startsWith?: string | StringFieldRefInput<$PrismaModel>
-    endsWith?: string | StringFieldRefInput<$PrismaModel>
-    search?: string
-    not?: NestedStringFilter<$PrismaModel> | string
   }
 
   export type AppInstanceScalarRelationFilter = {
@@ -5898,24 +5957,6 @@ export namespace Prisma {
   export type PhotoSumOrderByAggregateInput = {
     id?: SortOrder
     appInstanceId?: SortOrder
-  }
-
-  export type StringWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: string | StringFieldRefInput<$PrismaModel>
-    in?: string[]
-    notIn?: string[]
-    lt?: string | StringFieldRefInput<$PrismaModel>
-    lte?: string | StringFieldRefInput<$PrismaModel>
-    gt?: string | StringFieldRefInput<$PrismaModel>
-    gte?: string | StringFieldRefInput<$PrismaModel>
-    contains?: string | StringFieldRefInput<$PrismaModel>
-    startsWith?: string | StringFieldRefInput<$PrismaModel>
-    endsWith?: string | StringFieldRefInput<$PrismaModel>
-    search?: string
-    not?: NestedStringWithAggregatesFilter<$PrismaModel> | string
-    _count?: NestedIntFilter<$PrismaModel>
-    _min?: NestedStringFilter<$PrismaModel>
-    _max?: NestedStringFilter<$PrismaModel>
   }
 
   export type IntNullableFilter<$PrismaModel = never> = {
@@ -6113,6 +6154,10 @@ export namespace Prisma {
     connect?: GroupWhereUniqueInput | GroupWhereUniqueInput[]
   }
 
+  export type StringFieldUpdateOperationsInput = {
+    set?: string
+  }
+
   export type DateTimeFieldUpdateOperationsInput = {
     set?: Date | string
   }
@@ -6199,10 +6244,6 @@ export namespace Prisma {
     connectOrCreate?: FaceCreateOrConnectWithoutPhotoInput | FaceCreateOrConnectWithoutPhotoInput[]
     createMany?: FaceCreateManyPhotoInputEnvelope
     connect?: FaceWhereUniqueInput | FaceWhereUniqueInput[]
-  }
-
-  export type StringFieldUpdateOperationsInput = {
-    set?: string
   }
 
   export type AppInstanceUpdateOneRequiredWithoutPhotosNestedInput = {
@@ -6346,6 +6387,21 @@ export namespace Prisma {
     not?: NestedIntFilter<$PrismaModel> | number
   }
 
+  export type NestedStringFilter<$PrismaModel = never> = {
+    equals?: string | StringFieldRefInput<$PrismaModel>
+    in?: string[]
+    notIn?: string[]
+    lt?: string | StringFieldRefInput<$PrismaModel>
+    lte?: string | StringFieldRefInput<$PrismaModel>
+    gt?: string | StringFieldRefInput<$PrismaModel>
+    gte?: string | StringFieldRefInput<$PrismaModel>
+    contains?: string | StringFieldRefInput<$PrismaModel>
+    startsWith?: string | StringFieldRefInput<$PrismaModel>
+    endsWith?: string | StringFieldRefInput<$PrismaModel>
+    search?: string
+    not?: NestedStringFilter<$PrismaModel> | string
+  }
+
   export type NestedDateTimeFilter<$PrismaModel = never> = {
     equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     in?: Date[] | string[]
@@ -6384,35 +6440,6 @@ export namespace Prisma {
     not?: NestedFloatFilter<$PrismaModel> | number
   }
 
-  export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    in?: Date[] | string[]
-    notIn?: Date[] | string[]
-    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
-    not?: NestedDateTimeWithAggregatesFilter<$PrismaModel> | Date | string
-    _count?: NestedIntFilter<$PrismaModel>
-    _min?: NestedDateTimeFilter<$PrismaModel>
-    _max?: NestedDateTimeFilter<$PrismaModel>
-  }
-
-  export type NestedStringFilter<$PrismaModel = never> = {
-    equals?: string | StringFieldRefInput<$PrismaModel>
-    in?: string[]
-    notIn?: string[]
-    lt?: string | StringFieldRefInput<$PrismaModel>
-    lte?: string | StringFieldRefInput<$PrismaModel>
-    gt?: string | StringFieldRefInput<$PrismaModel>
-    gte?: string | StringFieldRefInput<$PrismaModel>
-    contains?: string | StringFieldRefInput<$PrismaModel>
-    startsWith?: string | StringFieldRefInput<$PrismaModel>
-    endsWith?: string | StringFieldRefInput<$PrismaModel>
-    search?: string
-    not?: NestedStringFilter<$PrismaModel> | string
-  }
-
   export type NestedStringWithAggregatesFilter<$PrismaModel = never> = {
     equals?: string | StringFieldRefInput<$PrismaModel>
     in?: string[]
@@ -6429,6 +6456,20 @@ export namespace Prisma {
     _count?: NestedIntFilter<$PrismaModel>
     _min?: NestedStringFilter<$PrismaModel>
     _max?: NestedStringFilter<$PrismaModel>
+  }
+
+  export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    in?: Date[] | string[]
+    notIn?: Date[] | string[]
+    lt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    lte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
+    not?: NestedDateTimeWithAggregatesFilter<$PrismaModel> | Date | string
+    _count?: NestedIntFilter<$PrismaModel>
+    _min?: NestedDateTimeFilter<$PrismaModel>
+    _max?: NestedDateTimeFilter<$PrismaModel>
   }
 
   export type NestedIntNullableFilter<$PrismaModel = never> = {
@@ -6591,12 +6632,14 @@ export namespace Prisma {
   }
 
   export type AppInstanceCreateWithoutPhotosInput = {
+    deviceId: string
     createdAt?: Date | string
     groups?: GroupCreateNestedManyWithoutAppInstanceInput
   }
 
   export type AppInstanceUncheckedCreateWithoutPhotosInput = {
     id?: number
+    deviceId: string
     createdAt?: Date | string
     groups?: GroupUncheckedCreateNestedManyWithoutAppInstanceInput
   }
@@ -6641,12 +6684,14 @@ export namespace Prisma {
   }
 
   export type AppInstanceUpdateWithoutPhotosInput = {
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     groups?: GroupUpdateManyWithoutAppInstanceNestedInput
   }
 
   export type AppInstanceUncheckedUpdateWithoutPhotosInput = {
     id?: IntFieldUpdateOperationsInput | number
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     groups?: GroupUncheckedUpdateManyWithoutAppInstanceNestedInput
   }
@@ -6763,12 +6808,14 @@ export namespace Prisma {
   }
 
   export type AppInstanceCreateWithoutGroupsInput = {
+    deviceId: string
     createdAt?: Date | string
     photos?: PhotoCreateNestedManyWithoutAppInstanceInput
   }
 
   export type AppInstanceUncheckedCreateWithoutGroupsInput = {
     id?: number
+    deviceId: string
     createdAt?: Date | string
     photos?: PhotoUncheckedCreateNestedManyWithoutAppInstanceInput
   }
@@ -6813,12 +6860,14 @@ export namespace Prisma {
   }
 
   export type AppInstanceUpdateWithoutGroupsInput = {
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     photos?: PhotoUpdateManyWithoutAppInstanceNestedInput
   }
 
   export type AppInstanceUncheckedUpdateWithoutGroupsInput = {
     id?: IntFieldUpdateOperationsInput | number
+    deviceId?: StringFieldUpdateOperationsInput | string
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     photos?: PhotoUncheckedUpdateManyWithoutAppInstanceNestedInput
   }
