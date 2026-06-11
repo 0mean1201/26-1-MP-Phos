@@ -9,8 +9,8 @@ generator client {
 
 // 기기 고유 ID 테이블
 model AppInstance {
-  // 💡 String에서 Int (자동 증가)로 변경하여 기준을 맞춥니다.
   id        Int      @id @default(autoincrement())
+  deviceId  String   @unique
   createdAt DateTime @default(now())
 
   photos Photo[]

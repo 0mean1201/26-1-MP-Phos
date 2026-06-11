@@ -122,6 +122,7 @@ exports.Prisma.TransactionIsolationLevel = makeStrictEnum({
 
 exports.Prisma.AppInstanceScalarFieldEnum = {
   id: 'id',
+  deviceId: 'deviceId',
   createdAt: 'createdAt'
 };
 
@@ -154,6 +155,10 @@ exports.Prisma.SortOrder = {
 
 exports.Prisma.JsonNullValueInput = {
   JsonNull: Prisma.JsonNull
+};
+
+exports.Prisma.AppInstanceOrderByRelevanceFieldEnum = {
+  deviceId: 'deviceId'
 };
 
 exports.Prisma.PhotoOrderByRelevanceFieldEnum = {
